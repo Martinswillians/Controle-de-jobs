@@ -392,8 +392,8 @@ function renderDashboard() {
       <td>${statusBadge(j.status)}</td>
       <td>
         <div class="row-actions">
-          <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️</button>
-          <button class="row-btn nf-edit-btn" title="Inserir/Editar NF" data-nf="${j.id}">🧾</button>
+          <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
+          <button class="row-btn nf-edit-btn" title="Inserir/Editar NF" data-nf="${j.id}">🧾 NF</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;
@@ -471,13 +471,13 @@ function renderJobsPage() {
       <td>${statusBadge(j.status)}</td>
       <td class="nf-icon">
         ${j.nf?.number
-          ? `<button class="row-btn nf-view-btn" title="Visualizar NF" data-nfview="${j.id}">🧾</button>`
+          ? `<button class="row-btn nf-view-btn" title="Visualizar NF" data-nfview="${j.id}">🧾 Ver NF</button>`
           : ""}
       </td>
       <td>
         <div class="row-actions">
-          <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️</button>
-          <button class="row-btn nf-edit-btn" title="Inserir/Editar NF" data-nf="${j.id}">🧾</button>
+          <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
+          <button class="row-btn nf-edit-btn" title="Inserir/Editar NF" data-nf="${j.id}">🧾 NF</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;

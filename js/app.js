@@ -2,8 +2,8 @@
 // app.js — Controle de Job
 // ═══════════════════════════════════════════════
 
-import { auth, db } from "./firebase-config.js?v=15";
-import { uploadPDF } from "./cloudinary.js?v=15";
+import { auth, db } from "./firebase-config.js";
+import { uploadPDF } from "./cloudinary.js";
 
 import {
   createUserWithEmailAndPassword,
@@ -21,12 +21,12 @@ import {
 import {
   subscribeClients, unsubscribeClients, initClientsEvents,
   updateClientSelects, openClientModal, allClients, getClientData
-} from "./clients.js?v=15";
+} from "./clients.js";
 
 import {
   checkAccess, showAccessBlocked, hideAccessBlocked,
   showDemoBanner, initAdminPanel, initAdminActions, ADMIN_UID
-} from "./access.js?v=15";
+} from "./access.js";
 
 // ─────────────────────────────────────────────
 // STATE
@@ -1024,13 +1024,25 @@ function renderNFvsMEI() {
   const jobsWithNF = jobs.filter(j => j.status === "pago_nf" || j.status === "pago_nf_pdf");
   const totalNF = jobsWithNF.reduce((a, j) => a + Number(j.value || 0), 0);
   const countNF = jobsWithNF.length;
-  const pctNF = Math.min((totalNF / MEI_LIMIT) * 100, 100);
+
+  // Limite de referência: mensal (81.000/12) ou anual, dependendo do período selecionado
+  const isMes = repPeriod && repPeriod.length === 7; // "YYYY-MM" = mês específico
+  const limiteRef = isMes ? MEI_LIMIT / 12 : MEI_LIMIT;
+  const limiteLabel = isMes
+    ? `Limite mensal: ${fmt(limiteRef)} (1/12 do MEI)`
+    : `Limite MEI: R$ 81.000`;
+
+  const pctNF = Math.min((totalNF / limiteRef) * 100, 100);
 
   $("repFaturamentoTotal").textContent = fmt(totalGeral);
   $("repNFTotal").textContent = fmt(totalNF);
   $("repNFCount").textContent = countNF;
-  $("repNFPercent").textContent = pctNF.toFixed(1) + "%";
+  $("repNFPercent").textContent = pctNF.toFixed(1) + "%" + (isMes ? " (do limite mensal)" : " (do limite anual)");
   $("repNFProgress").style.width = pctNF + "%";
+
+  // Atualiza label do limite na barra de progresso
+  const limiteEl = $("repNFLimiteLabel");
+  if (limiteEl) limiteEl.textContent = limiteLabel;
 
   // Jobs pagos SEM nota fiscal emitida (alerta)
   const paidWithoutNF = jobs.filter(j => j.status === "pago");

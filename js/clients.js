@@ -2,7 +2,7 @@
 // clients.js — Cadastro de Clientes/Produtoras
 // ═══════════════════════════════════════════════
 
-import { db } from "./firebase-config.js?v=15";
+import { db } from "./firebase-config.js";
 import {
   collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy

@@ -7,9 +7,12 @@
   <meta name="description" content="Controle de Jobs para Freelancers de Audiovisual" />
   <title>Controle de Job</title>
   <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
+  <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=16" />
 </head>
 <body>
 
@@ -108,6 +111,7 @@
       <li><a href="#" class="nav-link" data-page="jobs">📋 Meus Jobs</a></li>
       <li><a href="#" class="nav-link" data-page="nf">🧾 Notas Fiscais</a></li>
       <li><a href="#" class="nav-link" data-page="reports">📈 Relatórios</a></li>
+      <li><a href="#" class="nav-link" data-page="clients">🏢 Clientes</a></li>
       <li><a href="#" class="nav-link" data-page="mei">⚠️ Limite MEI</a></li>
       <li><a href="#" class="nav-link" data-page="settings">⚙️ Configurações</a></li>
     </ul>
@@ -124,10 +128,29 @@
     <div id="page-dashboard" class="page active">
       <div class="page-header">
         <h2>Dashboard</h2>
-        <div class="month-nav">
-          <button id="prevMonth">‹</button>
-          <span id="currentMonthLabel"></span>
-          <button id="nextMonth">›</button>
+        <div class="dashboard-header-actions">
+          <div class="dash-view-toggle">
+            <button class="dash-view-btn active" data-view="month">Mês</button>
+            <button class="dash-view-btn" data-view="year">Ano</button>
+          </div>
+          <select id="dashStatusFilter" class="dash-status-select">
+            <option value="">Todos os status</option>
+            <option value="pendente">🟡 Pendente</option>
+            <option value="pago">🟢 Pago</option>
+            <option value="pago_nf">🔵 Pago + NF</option>
+            <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
+          </select>
+          <button class="btn-outline btn-sm" id="dashFilterBtn">🔍 Filtrar</button>
+          <div class="month-nav" id="dashMonthNav">
+            <button id="prevMonth">‹</button>
+            <span id="currentMonthLabel"></span>
+            <button id="nextMonth">›</button>
+          </div>
+          <div class="month-nav hidden" id="dashYearNav">
+            <button id="prevYear">‹</button>
+            <span id="currentYearLabel"></span>
+            <button id="nextYear">›</button>
+          </div>
         </div>
       </div>
 
@@ -137,23 +160,27 @@
       <!-- CARDS -->
       <div class="cards-grid">
         <div class="card card-green">
-          <div class="card-label">Recebido no Mês</div>
+          <div class="card-label" id="cardRecebidoLabel">Recebido no Mês</div>
           <div class="card-value" id="cardRecebido">R$ 0,00</div>
         </div>
         <div class="card card-yellow">
-          <div class="card-label">Pendente no Mês</div>
+          <div class="card-label" id="cardPendenteLabel">Pendente no Mês</div>
           <div class="card-value" id="cardPendente">R$ 0,00</div>
         </div>
         <div class="card card-blue">
-          <div class="card-label">Total do Mês</div>
+          <div class="card-label" id="cardTotalLabel">Total do Mês</div>
           <div class="card-value" id="cardTotal">R$ 0,00</div>
         </div>
         <div class="card card-purple">
           <div class="card-label">Total no Ano</div>
           <div class="card-value" id="cardAno">R$ 0,00</div>
         </div>
+        <div class="card card-cyan">
+          <div class="card-label">NF Emitidas no Ano</div>
+          <div class="card-value" id="cardAnoNF">R$ 0,00</div>
+        </div>
         <div class="card card-neutral">
-          <div class="card-label">Jobs no Mês</div>
+          <div class="card-label" id="cardJobsLabel">Jobs no Mês</div>
           <div class="card-value" id="cardJobs">0</div>
         </div>
         <div class="card card-neutral">
@@ -165,7 +192,7 @@
       <!-- RECENT JOBS TABLE -->
       <div class="section-card">
         <div class="section-header">
-          <h3>Jobs do mês</h3>
+          <h3 id="dashJobsTitle">Jobs do mês</h3>
           <button class="btn-primary btn-sm" id="addJobBtnDash">+ Novo Job</button>
         </div>
         <div class="table-wrap">
@@ -185,7 +212,7 @@
         </div>
         <div id="dashEmpty" class="empty-state hidden">
           <span>🎬</span>
-          <p>Nenhum job neste mês.<br>Clique em <strong>+ Novo Job</strong> para começar.</p>
+          <p>Nenhum job neste período.<br>Clique em <strong>+ Novo Job</strong> para começar.</p>
         </div>
       </div>
     </div>
@@ -230,7 +257,7 @@
               <th>Valor</th>
               <th>Status</th>
               <th>NF</th>
-              <th></th>
+              <th>Opções</th>
             </tr>
           </thead>
           <tbody id="allJobsBody"></tbody>
@@ -265,6 +292,46 @@
     <div id="page-reports" class="page">
       <div class="page-header">
         <h2>Relatórios</h2>
+        <div class="reports-header-actions">
+          <select id="repPeriodSelect" class="dash-status-select">
+            <!-- preenchido via JS -->
+          </select>
+          <button class="btn-outline btn-sm" id="repExportExcel">📊 Excel</button>
+          <button class="btn-outline btn-sm" id="repExportPDF">📄 PDF</button>
+        </div>
+      </div>
+
+      <!-- NF x LIMITE MEI -->
+      <div class="section-card">
+        <h3>🧾 Notas Fiscais Emitidas × Limite MEI</h3>
+        <div class="nf-mei-summary">
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">Faturamento Total (com e sem NF)</div>
+            <div class="nf-mei-value nf-mei-total" id="repFaturamentoTotal">R$ 0,00</div>
+          </div>
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">Total faturado com NF emitida (ano)</div>
+            <div class="nf-mei-value" id="repNFTotal">R$ 0,00</div>
+          </div>
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">Qtd. de notas emitidas</div>
+            <div class="nf-mei-value" id="repNFCount">0</div>
+          </div>
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">% do limite MEI já coberto por NF</div>
+            <div class="nf-mei-value" id="repNFPercent">0%</div>
+          </div>
+        </div>
+        <div class="progress-wrap" style="margin-top:16px">
+          <div class="progress-bar">
+            <div class="progress-fill" id="repNFProgress" style="background:linear-gradient(90deg,var(--blue),var(--purple))"></div>
+          </div>
+          <div class="progress-labels">
+            <span>R$ 0</span>
+            <span id="repNFLimiteLabel">Limite MEI: R$ 81.000</span>
+          </div>
+        </div>
+        <div id="repNFWithoutAlert" class="nf-without-alert hidden"></div>
       </div>
 
       <div class="reports-grid">
@@ -298,6 +365,10 @@
           <div>
             <div class="mei-label">Faturamento Anual</div>
             <div class="mei-value" id="meiFaturado">R$ 0,00</div>
+          </div>
+          <div>
+            <div class="mei-label">Com Nota Fiscal Emitida</div>
+            <div class="mei-value mei-nf" id="meiFaturadoNF">R$ 0,00</div>
           </div>
           <div>
             <div class="mei-label">Limite MEI 2026</div>
@@ -343,6 +414,45 @@
           </div>
         </div>
       </div>
+    </div>
+
+
+    <!-- ─── CLIENTES ─── -->
+    <div id="page-clients" class="page">
+      <div class="page-header">
+        <h2>Clientes / Produtoras</h2>
+        <div class="clients-header-actions">
+          <button class="btn-outline btn-sm" id="importClientsBtn">📥 Importar</button>
+          <button class="btn-outline btn-sm" id="exportClientsBtn">📤 Exportar</button>
+          <button class="btn-primary btn-sm" id="addClientBtn">+ Novo Cliente</button>
+        </div>
+      </div>
+      <!-- Input escondido para importar arquivo -->
+      <input type="file" id="importClientsFile" accept=".json,.csv" hidden />
+
+      <div class="table-wrap clients-table-wrap">
+        <table class="jobs-table clients-table">
+          <thead>
+            <tr>
+              <th>Nome / Razão Social</th>
+              <th class="hide-mobile">CNPJ</th>
+              <th class="hide-mobile">Cidade</th>
+              <th>Status</th>
+              <th>Opções</th>
+            </tr>
+          </thead>
+          <tbody id="clientsListBody"></tbody>
+        </table>
+      </div>
+      <div id="clientsEmpty" class="empty-state hidden">
+        <span>🏢</span>
+        <p>Nenhum cliente cadastrado.<br>Clique em <strong>+ Novo Cliente</strong> para começar.</p>
+      </div>
+    </div>
+
+    <!-- ─── ADMIN ─── -->
+    <div id="page-admin" class="page">
+      <!-- Preenchido dinamicamente pelo access.js -->
     </div>
 
     <!-- ─── SETTINGS ─── -->
@@ -441,6 +551,90 @@
   </div>
 </div>
 
+<!-- CLIENT MODAL -->
+<div id="clientModal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <h3 id="clientModalTitle">Novo Cliente</h3>
+      <button class="modal-close" id="closeClientModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="client-modal-section">📋 Identificação</div>
+      <div class="form-grid">
+        <div class="field field-full">
+          <label>Razão Social / Nome *</label>
+          <input type="text" id="cName" placeholder="Ex: REBELS FILMES LTDA" />
+        </div>
+        <div class="field field-full">
+          <label>Nome Fantasia</label>
+          <input type="text" id="cTradeName" placeholder="Ex: Rebels Films" />
+        </div>
+        <div class="field">
+          <label>CNPJ / CPF</label>
+          <input type="text" id="cCNPJ" placeholder="00.000.000/0001-00" maxlength="18" />
+        </div>
+        <div class="field">
+          <label>Telefone / WhatsApp</label>
+          <input type="tel" id="cPhone" placeholder="(61) 99999-9999" />
+        </div>
+        <div class="field field-full">
+          <label>E-mail</label>
+          <input type="email" id="cEmail" placeholder="contato@empresa.com.br" />
+        </div>
+      </div>
+      <div class="client-modal-section">📍 Endereço (para NF)</div>
+      <div class="form-grid">
+        <div class="field field-full">
+          <label>Endereço completo</label>
+          <input type="text" id="cAddress" placeholder="Rua, número, complemento" />
+        </div>
+        <div class="field">
+          <label>Cidade</label>
+          <input type="text" id="cCity" placeholder="Brasília" />
+        </div>
+        <div class="field">
+          <label>Estado</label>
+          <select id="cState">
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option>
+            <option>BA</option><option>CE</option><option selected>DF</option><option>ES</option>
+            <option>GO</option><option>MA</option><option>MT</option><option>MS</option>
+            <option>MG</option><option>PA</option><option>PB</option><option>PR</option>
+            <option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+            <option>RS</option><option>RO</option><option>RR</option><option>SC</option>
+            <option>SP</option><option>SE</option><option>TO</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>CEP</label>
+          <input type="text" id="cCEP" placeholder="00000-000" maxlength="9" />
+        </div>
+      </div>
+      <div class="client-modal-section">📝 Observações</div>
+      <div class="field">
+        <label>Observações internas</label>
+        <textarea id="cNotes" rows="2" placeholder="Contato responsável, forma de pagamento preferida..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelClientModal">Cancelar</button>
+      <button class="btn-primary" id="saveClientBtn">Salvar Cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- NF VIEW MODAL (somente visualização) -->
+<div id="nfViewModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Nota Fiscal</h3>
+      <button class="modal-close" id="closeNFViewModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="nfViewContent"></div>
+    </div>
+  </div>
+</div>
+
 <!-- NF MODAL -->
 <div id="nfModal" class="modal-overlay hidden">
   <div class="modal">
@@ -464,15 +658,63 @@
           <input type="url" id="nfLink" placeholder="https://..." />
         </div>
         <div class="field field-full">
-          <label>PDF da NF</label>
-          <input type="file" id="nfPDF" accept=".pdf" />
-          <div id="nfPDFCurrent" class="file-current"></div>
+          <label>PDF da Nota Fiscal (opcional)</label>
+          <div id="nfPDFDropzone" class="pdf-dropzone">
+            <input type="file" id="nfPDFFile" accept="application/pdf" hidden />
+            <div id="nfPDFEmpty" class="pdf-dropzone-empty">
+              <span class="pdf-dropzone-icon">📄</span>
+              <span>Clique para escolher o PDF</span>
+              <span class="pdf-dropzone-sub">ou arraste o arquivo aqui · máx 5MB</span>
+            </div>
+            <div id="nfPDFPreview" class="pdf-dropzone-preview hidden">
+              <span class="pdf-file-icon">📎</span>
+              <span id="nfPDFFileName" class="pdf-file-name"></span>
+              <button type="button" id="nfPDFRemove" class="pdf-file-remove" title="Remover">✕</button>
+            </div>
+            <div id="nfPDFProgress" class="pdf-upload-progress hidden">
+              <div class="pdf-upload-bar"><div id="nfPDFProgressFill" class="pdf-upload-fill"></div></div>
+              <span id="nfPDFProgressText">Enviando...</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-outline" id="cancelNFModal">Cancelar</button>
       <button class="btn-primary" id="saveNFBtn">Salvar NF</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT CLIENTS MODAL -->
+<div id="importClientsModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>📥 Importar Clientes</h3>
+      <button class="modal-close" id="closeImportModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="importPreview" class="import-preview"></div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Como deseja importar os <strong id="importCount">0</strong> clientes encontrados?</p>
+      <div class="import-options">
+        <button class="import-option-btn" id="importMergeBtn">
+          <div class="import-option-icon">➕</div>
+          <div>
+            <div class="import-option-title">Adicionar sem sobrescrever</div>
+            <div class="import-option-desc">Mantém os clientes existentes e adiciona os novos. Clientes com o mesmo nome são ignorados.</div>
+          </div>
+        </button>
+        <button class="import-option-btn import-option-replace" id="importReplaceBtn">
+          <div class="import-option-icon">🔄</div>
+          <div>
+            <div class="import-option-title">Substituir lista completa</div>
+            <div class="import-option-desc">Apaga todos os clientes existentes e importa apenas os do arquivo. Esta ação não pode ser desfeita.</div>
+          </div>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelImportModal">Cancelar</button>
     </div>
   </div>
 </div>
@@ -503,8 +745,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js"></script>
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/firebase-config.js?v=16"></script>
+<script type="module" src="js/app.js?v=16"></script>
+<script type="module" src="js/clients.js?v=16"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

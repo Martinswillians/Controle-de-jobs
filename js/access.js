@@ -2,7 +2,7 @@
 // access.js — Controle de Acesso / Demo / Admin
 // ═══════════════════════════════════════════════
 
-import { db } from "./firebase-config.js?v=16";
+import { db } from "./firebase-config.js?v=15";
 import {
   doc, getDoc, setDoc, updateDoc, collection, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";

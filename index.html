@@ -1,255 +1,763 @@
-// ═══════════════════════════════════════════════
-// access.js — Controle de Acesso / Demo / Admin
-// ═══════════════════════════════════════════════
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f0f14" />
+  <meta name="description" content="Controle de Jobs para Freelancers de Audiovisual" />
+  <title>Controle de Job</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
+  <link rel="icon" type="image/x-icon" href="./favicon.ico" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css?v=18" />
+</head>
+<body>
 
-import { db } from "./firebase-config.js";
-import {
-  doc, getDoc, setDoc, updateDoc, collection, onSnapshot, query, orderBy
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+<!-- ═══════════════════════════════════════════════
+     AUTH SCREEN
+═══════════════════════════════════════════════ -->
+<div id="authScreen" class="screen active">
+  <div class="auth-wrap">
+    <div class="auth-logo">
+      <div class="logo-icon">🎬</div>
+      <h1>Controle de Job</h1>
+      <p>Gestão financeira para audiovisual</p>
+    </div>
 
-// UID do admin master — coloque o seu UID do Firebase aqui após primeiro login
-// Para descobrir: abra o console do browser após logar e execute: 
-//   firebase.auth().currentUser.uid  ou veja no Firebase Console > Authentication
-export const ADMIN_UID = "w9XSwxwewTaXwk0hCpyOuvCcd7G3";
+    <div class="auth-tabs">
+      <button class="tab-btn active" data-tab="login">Entrar</button>
+      <button class="tab-btn" data-tab="register">Cadastrar</button>
+    </div>
 
-const DEMO_DAYS = 5;
-
-// ─────────────────────────────────────────────
-// CHECK ACCESS
-// Retorna: { allowed: bool, reason: string, daysLeft: number|null, isAdmin: bool }
-// ─────────────────────────────────────────────
-export async function checkAccess(uid) {
-  if (uid === ADMIN_UID) return { allowed: true, isAdmin: true, reason: "admin" };
-
-  const snap = await getDoc(doc(db, "users", uid));
-  if (!snap.exists()) return { allowed: false, reason: "no_profile" };
-
-  const data = snap.data();
-
-  // Acesso aprovado pelo admin
-  if (data.accessStatus === "approved") {
-    return { allowed: true, isAdmin: false, reason: "approved" };
-  }
-
-  // Bloqueado pelo admin
-  if (data.accessStatus === "blocked") {
-    return { allowed: false, reason: "blocked" };
-  }
-
-  // Demo: verifica dias restantes
-  const createdAt = data.createdAt?.toDate?.() || new Date(data.createdAt || Date.now());
-  const now = new Date();
-  const diffMs = now - createdAt;
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  const daysLeft = Math.ceil(DEMO_DAYS - diffDays);
-
-  if (daysLeft > 0) {
-    return { allowed: true, isAdmin: false, reason: "demo", daysLeft };
-  }
-
-  return { allowed: false, reason: "demo_expired" };
-}
-
-// ─────────────────────────────────────────────
-// SHOW ACCESS SCREEN
-// ─────────────────────────────────────────────
-export function showAccessBlocked(reason, onLogout) {
-  const msgs = {
-    blocked: { icon: "🚫", title: "Acesso bloqueado", text: "Sua conta foi bloqueada pelo administrador. Entre em contato para mais informações." },
-    demo_expired: { icon: "⏰", title: "Período demo encerrado", text: `Seu período de teste de ${DEMO_DAYS} dias encerrou. Entre em contato com o administrador para liberar seu acesso completo.` },
-    no_profile: { icon: "⚠️", title: "Perfil não encontrado", text: "Houve um problema com seu perfil. Tente fazer login novamente." }
-  };
-  const m = msgs[reason] || msgs.no_profile;
-
-  // Create or reuse blocked screen
-  let screen = document.getElementById("blockedScreen");
-  if (!screen) {
-    screen = document.createElement("div");
-    screen.id = "blockedScreen";
-    screen.style.cssText = `
-      position:fixed;inset:0;background:#0f0f14;display:flex;align-items:center;
-      justify-content:center;z-index:9999;padding:24px;
-    `;
-    document.body.appendChild(screen);
-  }
-
-  screen.innerHTML = `
-    <div style="max-width:400px;text-align:center;background:#17171f;border:1px solid #2a2a38;
-                border-radius:16px;padding:40px 32px;">
-      <div style="font-size:56px;margin-bottom:16px">${m.icon}</div>
-      <h2 style="color:#e8e8f0;font-size:20px;margin-bottom:12px">${m.title}</h2>
-      <p style="color:#9090b0;line-height:1.6;margin-bottom:28px">${m.text}</p>
-      <button onclick="window._accessLogout()" style="
-        background:#7c6af7;color:#fff;border:none;padding:12px 28px;
-        border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;
-        font-family:inherit;width:100%
-      ">Sair da conta</button>
-    </div>`;
-
-  screen.style.display = "flex";
-  window._accessLogout = onLogout;
-}
-
-export function hideAccessBlocked() {
-  const s = document.getElementById("blockedScreen");
-  if (s) s.style.display = "none";
-}
-
-// ─────────────────────────────────────────────
-// DEMO BANNER
-// ─────────────────────────────────────────────
-export function showDemoBanner(daysLeft) {
-  let banner = document.getElementById("demoBanner");
-  if (!banner) {
-    banner = document.createElement("div");
-    banner.id = "demoBanner";
-    banner.style.cssText = `
-      position:fixed;bottom:0;left:0;right:0;
-      background:linear-gradient(135deg,#f39c12,#e67e22);
-      color:#fff;text-align:center;padding:10px 16px;
-      font-size:13px;font-weight:600;z-index:500;
-      display:flex;align-items:center;justify-content:center;gap:12px;
-    `;
-    document.body.appendChild(banner);
-  }
-  const day = daysLeft === 1 ? "dia" : "dias";
-  banner.innerHTML = `
-    ⏰ Você está no período demo — <strong>${daysLeft} ${day} restante${daysLeft > 1 ? 's' : ''}</strong>.
-    Contate o admin para liberar acesso completo.
-    <button onclick="document.getElementById('demoBanner').style.display='none'"
-      style="background:rgba(0,0,0,0.2);border:none;color:#fff;padding:4px 10px;
-             border-radius:6px;cursor:pointer;font-size:12px;margin-left:8px">✕</button>
-  `;
-  banner.style.display = "flex";
-}
-
-// ─────────────────────────────────────────────
-// ADMIN PANEL — listar usuários
-// ─────────────────────────────────────────────
-export function initAdminPanel(currentUid) {
-  if (currentUid !== ADMIN_UID) return;
-
-  // Show admin nav item
-  const nav = document.querySelector(".nav-menu");
-  if (nav && !document.querySelector("[data-page='admin']")) {
-    const li = document.createElement("li");
-    li.innerHTML = `<a href="#" class="nav-link" data-page="admin">👑 Admin</a>`;
-    nav.appendChild(li);
-    li.querySelector("[data-page='admin']").addEventListener("click", e => {
-      e.preventDefault();
-      window._navigateTo("admin");
-    });
-  }
-
-  // Subscribe to all users
-  const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
-  onSnapshot(q, snap => {
-    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    window._allAdminUsers = users;
-    const currentFilter = document.querySelector(".admin-pill.active")?.dataset.filter || "all";
-    renderAdminPage(users, currentFilter);
-  });
-}
-
-function renderAdminPage(users, filter = "all") {
-  const page = document.getElementById("page-admin");
-  if (!page) return;
-
-  // Calcula status de cada usuário uma vez
-  const enriched = users.map(u => {
-    const createdAt = u.createdAt?.toDate?.() || new Date(u.createdAt || 0);
-    const diffDays = (new Date() - createdAt) / (1000*60*60*24);
-    const demoLeft = Math.ceil(3 - diffDays);
-    let statusKey = "demo";
-    if (u.accessStatus === "approved") statusKey = "approved";
-    else if (u.accessStatus === "blocked") statusKey = "blocked";
-    else if (demoLeft <= 0) statusKey = "expired";
-    return { ...u, createdAt, demoLeft, statusKey };
-  });
-
-  const counts = {
-    all: enriched.length,
-    demo: enriched.filter(u => u.statusKey === "demo").length,
-    expired: enriched.filter(u => u.statusKey === "expired").length,
-    approved: enriched.filter(u => u.statusKey === "approved").length,
-    blocked: enriched.filter(u => u.statusKey === "blocked").length,
-  };
-
-  const filtered = filter === "all"
-    ? enriched
-    : filter === "pending"
-      ? enriched.filter(u => u.statusKey === "demo" || u.statusKey === "expired")
-      : enriched.filter(u => u.statusKey === filter);
-
-  const pillBtn = (key, label, count) => `
-    <button class="admin-pill ${filter === key ? 'active' : ''}" data-filter="${key}">
-      ${label} <span class="admin-pill-count">${count}</span>
-    </button>`;
-
-  page.innerHTML = `
-    <div class="page-header"><h2>👑 Painel Admin</h2></div>
-    <div class="section-card">
-      <div class="admin-pills">
-        ${pillBtn("all", "Todos", counts.all)}
-        ${pillBtn("pending", "⏰ Pendentes", counts.demo + counts.expired)}
-        ${pillBtn("approved", "✅ Aprovados", counts.approved)}
-        ${pillBtn("blocked", "🚫 Bloqueados", counts.blocked)}
+    <div id="loginForm" class="auth-form active">
+      <div class="field">
+        <label>E-mail</label>
+        <input type="email" id="loginEmail" placeholder="seu@email.com" />
       </div>
-      <h3>Usuários ${filter !== "all" ? "filtrados" : "cadastrados"} (${filtered.length})</h3>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" />
+      </div>
+      <div class="forgot"><a href="#" id="forgotPassword">Esqueci a senha</a></div>
+      <button class="btn-primary" id="loginBtn">Entrar</button>
+    </div>
+
+    <div id="registerForm" class="auth-form">
+      <div class="field">
+        <label>Nome completo</label>
+        <input type="text" id="regName" placeholder="Seu nome" />
+      </div>
+      <div class="field">
+        <label>E-mail</label>
+        <input type="email" id="regEmail" placeholder="seu@email.com" />
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="regPassword" placeholder="Mínimo 6 caracteres" />
+      </div>
+      <div class="field">
+        <label>Profissão</label>
+        <select id="regProfession">
+          <option value="">Selecione...</option>
+          <option>Videomaker</option>
+          <option>Operador de Câmera</option>
+          <option>Fotógrafo</option>
+          <option>Editor de Vídeo</option>
+          <option>Técnico de Som</option>
+          <option>Iluminador</option>
+          <option>Diretor</option>
+          <option>Produtor</option>
+          <option>Outro</option>
+        </select>
+      </div>
+      <button class="btn-primary" id="registerBtn">Criar conta</button>
+    </div>
+
+    <div id="authMsg" class="auth-msg"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     MAIN APP
+═══════════════════════════════════════════════ -->
+<div id="appScreen" class="screen">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="menu-btn" id="menuToggle">☰</button>
+      <span class="topbar-title">Controle de Job</span>
+    </div>
+    <div class="topbar-right">
+      <span id="userNameDisplay" class="user-name"></span>
+      <button class="btn-icon" id="logoutBtn" title="Sair">⏻</button>
+    </div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <nav id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🎬</div>
+      <div>
+        <div class="sidebar-user-name" id="sidebarName"></div>
+        <div class="sidebar-user-role" id="sidebarRole"></div>
+      </div>
+    </div>
+    <ul class="nav-menu">
+      <li><a href="#" class="nav-link active" data-page="dashboard">📊 Dashboard</a></li>
+      <li><a href="#" class="nav-link" data-page="jobs">📋 Meus Jobs</a></li>
+      <li><a href="#" class="nav-link" data-page="nf">🧾 Notas Fiscais</a></li>
+      <li><a href="#" class="nav-link" data-page="reports">📈 Relatórios</a></li>
+      <li><a href="#" class="nav-link" data-page="clients">🏢 Clientes</a></li>
+      <li><a href="#" class="nav-link" data-page="mei">⚠️ Limite MEI</a></li>
+      <li><a href="#" class="nav-link" data-page="settings">⚙️ Configurações</a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <a href="https://www.nfse.gov.br" target="_blank" class="btn-mei-link">🏛️ Portal MEI / NFS-e</a>
+    </div>
+  </nav>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- PAGE CONTENT -->
+  <main id="mainContent" class="main-content">
+
+    <!-- ─── DASHBOARD ─── -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-header">
+        <h2>Dashboard</h2>
+        <div class="dashboard-header-actions">
+          <div class="dash-view-toggle">
+            <button class="dash-view-btn active" data-view="month">Mês</button>
+            <button class="dash-view-btn" data-view="year">Ano</button>
+          </div>
+          <select id="dashStatusFilter" class="dash-status-select">
+            <option value="">Todos os status</option>
+            <option value="pendente">🟡 Pendente</option>
+            <option value="pago">🟢 Pago</option>
+            <option value="pago_nf">🔵 Pago + NF</option>
+            <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
+          </select>
+          <button class="btn-outline btn-sm" id="dashFilterBtn">🔍 Filtrar</button>
+          <div class="month-nav" id="dashMonthNav">
+            <button id="prevMonth">‹</button>
+            <span id="currentMonthLabel"></span>
+            <button id="nextMonth">›</button>
+          </div>
+          <div class="month-nav hidden" id="dashYearNav">
+            <button id="prevYear">‹</button>
+            <span id="currentYearLabel"></span>
+            <button id="nextYear">›</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MEI ALERT -->
+      <div id="meiAlert" class="mei-alert hidden"></div>
+
+      <!-- CARDS -->
+      <div class="cards-grid">
+        <div class="card card-green">
+          <div class="card-label" id="cardRecebidoLabel">Recebido no Mês</div>
+          <div class="card-value" id="cardRecebido">R$ 0,00</div>
+        </div>
+        <div class="card card-yellow">
+          <div class="card-label" id="cardPendenteLabel">Pendente no Mês</div>
+          <div class="card-value" id="cardPendente">R$ 0,00</div>
+        </div>
+        <div class="card card-blue">
+          <div class="card-label" id="cardTotalLabel">Total do Mês</div>
+          <div class="card-value" id="cardTotal">R$ 0,00</div>
+        </div>
+        <div class="card card-purple">
+          <div class="card-label">Total no Ano</div>
+          <div class="card-value" id="cardAno">R$ 0,00</div>
+        </div>
+        <div class="card card-cyan">
+          <div class="card-label">NF Emitidas no Ano</div>
+          <div class="card-value" id="cardAnoNF">R$ 0,00</div>
+        </div>
+        <div class="card card-neutral">
+          <div class="card-label" id="cardJobsLabel">Jobs no Mês</div>
+          <div class="card-value" id="cardJobs">0</div>
+        </div>
+        <div class="card card-neutral">
+          <div class="card-label">Ticket Médio</div>
+          <div class="card-value" id="cardTicket">R$ 0,00</div>
+        </div>
+      </div>
+
+      <!-- RECENT JOBS TABLE -->
+      <div class="section-card">
+        <div class="section-header">
+          <h3 id="dashJobsTitle">Jobs do mês</h3>
+          <button class="btn-primary btn-sm" id="addJobBtnDash">+ Novo Job</button>
+        </div>
+        <div class="table-wrap">
+          <table class="jobs-table" id="dashJobsTable">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Job</th>
+                <th>Cliente</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="dashJobsBody"></tbody>
+          </table>
+        </div>
+        <div id="dashEmpty" class="empty-state hidden">
+          <span>🎬</span>
+          <p>Nenhum job neste período.<br>Clique em <strong>+ Novo Job</strong> para começar.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── JOBS ─── -->
+    <div id="page-jobs" class="page">
+      <div class="page-header">
+        <h2>Meus Jobs</h2>
+        <button class="btn-primary" id="addJobBtn">+ Novo Job</button>
+      </div>
+
+      <!-- FILTERS -->
+      <div class="filters-bar">
+        <select id="filterMonth">
+          <option value="">Todos os meses</option>
+        </select>
+        <select id="filterClient">
+          <option value="">Todos os clientes</option>
+        </select>
+        <select id="filterStatus">
+          <option value="">Todos os status</option>
+          <option value="pendente">🟡 Pendente</option>
+          <option value="pago">🟢 Pago</option>
+          <option value="pago_nf">🔵 Pago + NF</option>
+          <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
+        </select>
+        <select id="filterNF">
+          <option value="">Com/Sem NF</option>
+          <option value="com">Com NF</option>
+          <option value="sem">Sem NF</option>
+        </select>
+        <button class="btn-outline btn-sm" id="clearFilters">✕ Limpar</button>
+      </div>
+
       <div class="table-wrap">
-        <table class="jobs-table">
-          <thead><tr>
-            <th>Nome</th><th>E-mail</th><th>Profissão</th>
-            <th>Cadastro</th><th>Status</th><th>Ações</th>
-          </tr></thead>
-          <tbody>
-            ${filtered.map(u => {
-              let statusBadge = "";
-              if (u.statusKey === "approved") {
-                statusBadge = '<span class="badge badge-pago">✅ Aprovado</span>';
-              } else if (u.statusKey === "blocked") {
-                statusBadge = '<span class="badge badge-inativo">🚫 Bloqueado</span>';
-              } else if (u.statusKey === "demo") {
-                statusBadge = `<span class="badge badge-pendente">⏰ Demo (${u.demoLeft}d)</span>`;
-              } else {
-                statusBadge = '<span class="badge badge-inativo">⏰ Demo expirado</span>';
-              }
-              return `<tr>
-                <td><strong>${u.name || "—"}</strong></td>
-                <td style="font-size:12px;color:var(--text2)">${u.email || "—"}</td>
-                <td style="font-size:12px">${u.profession || "—"}</td>
-                <td style="font-size:12px;color:var(--text2)">${u.createdAt.toLocaleDateString("pt-BR")}</td>
-                <td>${statusBadge}</td>
-                <td>
-                  <div class="row-actions" style="opacity:1;flex-wrap:wrap;gap:4px">
-                    ${u.accessStatus !== "approved" ? `
-                      <button class="row-btn" onclick="window._approveUser('${u.id}')" title="Aprovar">✅</button>
-                    ` : ""}
-                    ${u.accessStatus !== "blocked" ? `
-                      <button class="row-btn delete" onclick="window._blockUser('${u.id}')" title="Bloquear">🚫</button>
-                    ` : `
-                      <button class="row-btn" onclick="window._approveUser('${u.id}')" title="Desbloquear">♻️</button>
-                    `}
-                  </div>
-                </td>
-              </tr>`;
-            }).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Nenhum usuário neste filtro.</td></tr>`}
-          </tbody>
+        <table class="jobs-table" id="allJobsTable">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Job</th>
+              <th>Cliente</th>
+              <th>Valor</th>
+              <th>Status</th>
+              <th>NF</th>
+              <th>Opções</th>
+            </tr>
+          </thead>
+          <tbody id="allJobsBody"></tbody>
         </table>
       </div>
-    </div>`;
+      <div id="jobsEmpty" class="empty-state hidden">
+        <span>🎬</span>
+        <p>Nenhum job encontrado.</p>
+      </div>
 
-  // Bind filter pills
-  page.querySelectorAll(".admin-pill").forEach(btn => {
-    btn.addEventListener("click", () => renderAdminPage(window._allAdminUsers, btn.dataset.filter));
-  });
-}
+      <div class="export-bar">
+        <button class="btn-outline btn-sm" id="exportExcel">📊 Excel</button>
+        <button class="btn-outline btn-sm" id="exportPDF">📄 PDF</button>
+        <button class="btn-outline btn-sm" id="exportCSV">📁 CSV</button>
+      </div>
+    </div>
 
-export function initAdminActions() {
-  window._approveUser = async (uid) => {
-    await updateDoc(doc(db, "users", uid), { accessStatus: "approved" });
-  };
-  window._blockUser = async (uid) => {
-    await updateDoc(doc(db, "users", uid), { accessStatus: "blocked" });
-  };
-}
+    <!-- ─── NOTAS FISCAIS ─── -->
+    <div id="page-nf" class="page">
+      <div class="page-header">
+        <h2>Notas Fiscais</h2>
+        <a href="https://www.nfse.gov.br" target="_blank" class="btn-outline">🏛️ Abrir Portal NFS-e</a>
+      </div>
+      <div id="nfList" class="nf-grid"></div>
+      <div id="nfEmpty" class="empty-state hidden">
+        <span>🧾</span>
+        <p>Nenhuma nota fiscal registrada.<br>Adicione uma nota a partir de um job.</p>
+      </div>
+    </div>
+
+    <!-- ─── RELATÓRIOS ─── -->
+    <div id="page-reports" class="page">
+      <div class="page-header">
+        <h2>Relatórios</h2>
+        <div class="reports-header-actions">
+          <select id="repPeriodSelect" class="dash-status-select">
+            <!-- preenchido via JS -->
+          </select>
+          <button class="btn-outline btn-sm" id="repExportExcel">📊 Excel</button>
+          <button class="btn-outline btn-sm" id="repExportPDF">📄 PDF</button>
+        </div>
+      </div>
+
+      <!-- NF x LIMITE MEI -->
+      <div class="section-card">
+        <h3>🧾 Notas Fiscais Emitidas × Limite MEI</h3>
+        <div class="nf-mei-summary">
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">Faturamento Total (com e sem NF)</div>
+            <div class="nf-mei-value nf-mei-total" id="repFaturamentoTotal">R$ 0,00</div>
+          </div>
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">Total faturado com NF emitida (ano)</div>
+            <div class="nf-mei-value" id="repNFTotal">R$ 0,00</div>
+          </div>
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">Qtd. de notas emitidas</div>
+            <div class="nf-mei-value" id="repNFCount">0</div>
+          </div>
+          <div class="nf-mei-stat">
+            <div class="nf-mei-label">% do limite MEI já coberto por NF</div>
+            <div class="nf-mei-value" id="repNFPercent">0%</div>
+          </div>
+        </div>
+        <div class="progress-wrap" style="margin-top:16px">
+          <div class="progress-bar">
+            <div class="progress-fill" id="repNFProgress" style="background:linear-gradient(90deg,var(--blue),var(--purple))"></div>
+          </div>
+          <div class="progress-labels">
+            <span>R$ 0</span>
+            <span id="repNFLimiteLabel">Limite MEI: R$ 81.000</span>
+          </div>
+        </div>
+        <div id="repNFWithoutAlert" class="nf-without-alert hidden"></div>
+      </div>
+
+      <div class="reports-grid">
+        <div class="section-card">
+          <h3>Faturamento por Mês</h3>
+          <canvas id="chartMes" height="220"></canvas>
+        </div>
+        <div class="section-card">
+          <h3>Jobs por Cliente</h3>
+          <canvas id="chartCliente" height="220"></canvas>
+        </div>
+        <div class="section-card">
+          <h3>Pagos vs Pendentes</h3>
+          <canvas id="chartStatus" height="220"></canvas>
+        </div>
+        <div class="section-card">
+          <h3>Top Clientes por Valor</h3>
+          <div id="topClientes"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── MEI ─── -->
+    <div id="page-mei" class="page">
+      <div class="page-header">
+        <h2>Limite MEI</h2>
+      </div>
+
+      <div class="mei-card">
+        <div class="mei-header">
+          <div>
+            <div class="mei-label">Faturamento Anual</div>
+            <div class="mei-value" id="meiFaturado">R$ 0,00</div>
+          </div>
+          <div>
+            <div class="mei-label">Com Nota Fiscal Emitida</div>
+            <div class="mei-value mei-nf" id="meiFaturadoNF">R$ 0,00</div>
+          </div>
+          <div>
+            <div class="mei-label">Limite MEI 2026</div>
+            <div class="mei-value">R$ 81.000,00</div>
+          </div>
+          <div>
+            <div class="mei-label">Disponível</div>
+            <div class="mei-value mei-disponivel" id="meiDisponivel">R$ 81.000,00</div>
+          </div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress-bar">
+            <div class="progress-fill" id="meiProgress"></div>
+            <div class="progress-marker" style="left:70%"><span>70%</span></div>
+            <div class="progress-marker" style="left:85%"><span>85%</span></div>
+            <div class="progress-marker" style="left:95%"><span>95%</span></div>
+          </div>
+          <div class="progress-labels">
+            <span>R$ 0</span>
+            <span>R$ 81.000</span>
+          </div>
+        </div>
+
+        <div id="meiAlertBox" class="mei-alert-box hidden"></div>
+
+        <div class="mei-stats">
+          <div class="mei-stat">
+            <div class="mei-stat-label">% Utilizado</div>
+            <div class="mei-stat-value" id="meiPercent">0%</div>
+          </div>
+          <div class="mei-stat">
+            <div class="mei-stat-label">Média mensal</div>
+            <div class="mei-stat-value" id="meiMedia">R$ 0,00</div>
+          </div>
+          <div class="mei-stat">
+            <div class="mei-stat-label">Projeção anual</div>
+            <div class="mei-stat-value" id="meiProjecao">R$ 0,00</div>
+          </div>
+          <div class="mei-stat">
+            <div class="mei-stat-label">Meses restantes</div>
+            <div class="mei-stat-value" id="meiMesesRestantes">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ─── CLIENTES ─── -->
+    <div id="page-clients" class="page">
+      <div class="page-header">
+        <h2>Clientes / Produtoras</h2>
+        <div class="clients-header-actions">
+          <button class="btn-outline btn-sm" id="importClientsBtn">📥 Importar</button>
+          <button class="btn-outline btn-sm" id="exportClientsBtn">📤 Exportar</button>
+          <button class="btn-primary btn-sm" id="addClientBtn">+ Novo Cliente</button>
+        </div>
+      </div>
+      <!-- Input escondido para importar arquivo -->
+      <input type="file" id="importClientsFile" accept=".json,.csv" hidden />
+
+      <div class="table-wrap clients-table-wrap">
+        <table class="jobs-table clients-table">
+          <thead>
+            <tr>
+              <th>Nome / Razão Social</th>
+              <th class="hide-mobile">CNPJ</th>
+              <th class="hide-mobile">Cidade</th>
+              <th>Status</th>
+              <th>Opções</th>
+            </tr>
+          </thead>
+          <tbody id="clientsListBody"></tbody>
+        </table>
+      </div>
+      <div id="clientsEmpty" class="empty-state hidden">
+        <span>🏢</span>
+        <p>Nenhum cliente cadastrado.<br>Clique em <strong>+ Novo Cliente</strong> para começar.</p>
+      </div>
+    </div>
+
+    <!-- ─── ADMIN ─── -->
+    <div id="page-admin" class="page">
+      <!-- Preenchido dinamicamente pelo access.js -->
+    </div>
+
+    <!-- ─── SETTINGS ─── -->
+    <div id="page-settings" class="page">
+      <div class="page-header">
+        <h2>Configurações</h2>
+      </div>
+      <div class="section-card">
+        <h3>Perfil</h3>
+        <div class="field">
+          <label>Nome</label>
+          <input type="text" id="settingName" />
+        </div>
+        <div class="field">
+          <label>Profissão</label>
+          <select id="settingProfession">
+            <option>Videomaker</option>
+            <option>Operador de Câmera</option>
+            <option>Fotógrafo</option>
+            <option>Editor de Vídeo</option>
+            <option>Técnico de Som</option>
+            <option>Iluminador</option>
+            <option>Diretor</option>
+            <option>Produtor</option>
+            <option>Outro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Número CNPJ MEI</label>
+          <input type="text" id="settingCNPJ" placeholder="00.000.000/0001-00" />
+        </div>
+        <button class="btn-primary" id="saveSettings">Salvar</button>
+      </div>
+      <div class="section-card">
+        <h3>Conta</h3>
+        <button class="btn-outline btn-danger" id="logoutBtnSettings">Sair da conta</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     MODALS
+═══════════════════════════════════════════════ -->
+
+<!-- JOB MODAL -->
+<div id="jobModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="jobModalTitle">Novo Job</h3>
+      <button class="modal-close" id="closeJobModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field">
+          <label>Data do Job *</label>
+          <input type="date" id="jobDate" />
+        </div>
+        <div class="field">
+          <label>Valor (R$) *</label>
+          <input type="number" id="jobValue" placeholder="0,00" step="0.01" min="0" />
+        </div>
+        <div class="field field-full">
+          <label>Nome do Job *</label>
+          <input type="text" id="jobName" placeholder="Ex: JOB SECOM CÂMERA CAR" />
+        </div>
+        <div class="field field-full">
+          <label>Produtora / Cliente *</label>
+          <input type="text" id="jobClient" list="clientsSuggestions" placeholder="Ex: REBELS FILMES" />
+          <datalist id="clientsSuggestions"></datalist>
+        </div>
+        <div class="field field-full">
+          <label>Observações</label>
+          <textarea id="jobNotes" placeholder="Notas extras, contato, local..." rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label>Status *</label>
+          <select id="jobStatus">
+            <option value="pendente">🟡 Pendente</option>
+            <option value="pago">🟢 Pago</option>
+            <option value="pago_nf">🔵 Pago + NF Emitida</option>
+            <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
+          </select>
+        </div>
+        <div class="field" id="payDateField">
+          <label>Data do Pagamento</label>
+          <input type="date" id="jobPayDate" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelJobModal">Cancelar</button>
+      <button class="btn-primary" id="saveJobBtn">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLIENT MODAL -->
+<div id="clientModal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <h3 id="clientModalTitle">Novo Cliente</h3>
+      <button class="modal-close" id="closeClientModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="client-modal-section">📋 Identificação</div>
+      <div class="form-grid">
+        <div class="field field-full">
+          <label>Razão Social / Nome *</label>
+          <input type="text" id="cName" placeholder="Ex: REBELS FILMES LTDA" />
+        </div>
+        <div class="field field-full">
+          <label>Nome Fantasia</label>
+          <input type="text" id="cTradeName" placeholder="Ex: Rebels Films" />
+        </div>
+        <div class="field">
+          <label>CNPJ / CPF</label>
+          <input type="text" id="cCNPJ" placeholder="00.000.000/0001-00" maxlength="18" />
+        </div>
+        <div class="field">
+          <label>Telefone / WhatsApp</label>
+          <input type="tel" id="cPhone" placeholder="(61) 99999-9999" />
+        </div>
+        <div class="field field-full">
+          <label>E-mail</label>
+          <input type="email" id="cEmail" placeholder="contato@empresa.com.br" />
+        </div>
+      </div>
+      <div class="client-modal-section">📍 Endereço (para NF)</div>
+      <div class="form-grid">
+        <div class="field field-full">
+          <label>Endereço completo</label>
+          <input type="text" id="cAddress" placeholder="Rua, número, complemento" />
+        </div>
+        <div class="field">
+          <label>Cidade</label>
+          <input type="text" id="cCity" placeholder="Brasília" />
+        </div>
+        <div class="field">
+          <label>Estado</label>
+          <select id="cState">
+            <option>AC</option><option>AL</option><option>AP</option><option>AM</option>
+            <option>BA</option><option>CE</option><option selected>DF</option><option>ES</option>
+            <option>GO</option><option>MA</option><option>MT</option><option>MS</option>
+            <option>MG</option><option>PA</option><option>PB</option><option>PR</option>
+            <option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+            <option>RS</option><option>RO</option><option>RR</option><option>SC</option>
+            <option>SP</option><option>SE</option><option>TO</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>CEP</label>
+          <input type="text" id="cCEP" placeholder="00000-000" maxlength="9" />
+        </div>
+      </div>
+      <div class="client-modal-section">📝 Observações</div>
+      <div class="field">
+        <label>Observações internas</label>
+        <textarea id="cNotes" rows="2" placeholder="Contato responsável, forma de pagamento preferida..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelClientModal">Cancelar</button>
+      <button class="btn-primary" id="saveClientBtn">Salvar Cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- NF VIEW MODAL (somente visualização) -->
+<div id="nfViewModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Nota Fiscal</h3>
+      <button class="modal-close" id="closeNFViewModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="nfViewContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- NF MODAL -->
+<div id="nfModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Nota Fiscal</h3>
+      <button class="modal-close" id="closeNFModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="nfJobInfo" class="nf-job-info"></div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Número da NF</label>
+          <input type="text" id="nfNumber" placeholder="00001" />
+        </div>
+        <div class="field">
+          <label>Data de Emissão</label>
+          <input type="date" id="nfDate" />
+        </div>
+        <div class="field field-full">
+          <label>Link de Consulta da NF</label>
+          <input type="url" id="nfLink" placeholder="https://..." />
+        </div>
+        <div class="field field-full">
+          <label>PDF da Nota Fiscal (opcional)</label>
+          <div id="nfPDFDropzone" class="pdf-dropzone">
+            <input type="file" id="nfPDFFile" accept="application/pdf" hidden />
+            <div id="nfPDFEmpty" class="pdf-dropzone-empty">
+              <span class="pdf-dropzone-icon">📄</span>
+              <span>Clique para escolher o PDF</span>
+              <span class="pdf-dropzone-sub">ou arraste o arquivo aqui · máx 5MB</span>
+            </div>
+            <div id="nfPDFPreview" class="pdf-dropzone-preview hidden">
+              <span class="pdf-file-icon">📎</span>
+              <span id="nfPDFFileName" class="pdf-file-name"></span>
+              <button type="button" id="nfPDFRemove" class="pdf-file-remove" title="Remover">✕</button>
+            </div>
+            <div id="nfPDFProgress" class="pdf-upload-progress hidden">
+              <div class="pdf-upload-bar"><div id="nfPDFProgressFill" class="pdf-upload-fill"></div></div>
+              <span id="nfPDFProgressText">Enviando...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelNFModal">Cancelar</button>
+      <button class="btn-primary" id="saveNFBtn">Salvar NF</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMPORT CLIENTS MODAL -->
+<div id="importClientsModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>📥 Importar Clientes</h3>
+      <button class="modal-close" id="closeImportModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="importPreview" class="import-preview"></div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Como deseja importar os <strong id="importCount">0</strong> clientes encontrados?</p>
+      <div class="import-options">
+        <button class="import-option-btn" id="importMergeBtn">
+          <div class="import-option-icon">➕</div>
+          <div>
+            <div class="import-option-title">Adicionar sem sobrescrever</div>
+            <div class="import-option-desc">Mantém os clientes existentes e adiciona os novos. Clientes com o mesmo nome são ignorados.</div>
+          </div>
+        </button>
+        <button class="import-option-btn import-option-replace" id="importReplaceBtn">
+          <div class="import-option-icon">🔄</div>
+          <div>
+            <div class="import-option-title">Substituir lista completa</div>
+            <div class="import-option-desc">Apaga todos os clientes existentes e importa apenas os do arquivo. Esta ação não pode ser desfeita.</div>
+          </div>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelImportModal">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE CONFIRM MODAL -->
+<div id="deleteModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Excluir Job</h3>
+      <button class="modal-close" id="closeDeleteModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Tem certeza que deseja excluir este job? Esta ação não pode ser desfeita.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelDelete">Cancelar</button>
+      <button class="btn-primary btn-danger" id="confirmDelete">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- LOADING -->
+<div id="loadingOverlay" class="loading-overlay hidden">
+  <div class="spinner"></div>
+</div>
+
+<!-- Firebase -->
+<script type="module" src="js/firebase-config.js?v=18"></script>
+<script type="module" src="js/app.js?v=18"></script>
+<script type="module" src="js/clients.js?v=18"></script>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
+<!-- SheetJS for Excel export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!-- jsPDF for PDF export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
+
+</body>
+</html>

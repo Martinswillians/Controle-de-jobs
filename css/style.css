@@ -1255,8 +1255,45 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
 
 @media (max-width: 600px) {
   .clients-header-actions { width: 100%; justify-content: flex-end; }
-  .hide-mobile { display: none; }
+
+  /* No mobile: transforma tabela em cards empilhados */
   .clients-table { min-width: unset; }
+  .clients-table thead { display: none; }
+  .clients-table tbody tr {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    gap: 8px;
+  }
+  .clients-table td {
+    display: block;
+    border: none;
+    padding: 0;
+    font-size: 13px;
+  }
+  /* Esconde CNPJ e cidade no card mobile (fica nos detalhes ao editar) */
+  .clients-table td.hide-mobile { display: none; }
+  /* Botões ficam em linha no final do card */
+  .clients-table td:last-child {
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+  .clients-table .row-actions {
+    flex-wrap: nowrap;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .clients-table .row-btn {
+    flex: 1;
+    justify-content: center;
+    height: 36px;
+    font-size: 12px;
+  }
 }
 
 /* Import modal */

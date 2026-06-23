@@ -2,7 +2,7 @@
 // Service Worker — Controle de Job (Atualizado)
 // ═══════════════════════════════════════════════
 // Mude essa versão sempre que fizer uma grande atualização no código do app
-const CACHE_NAME = "jobcontrol-v3.5";
+const CACHE_NAME = "jobcontrol-v3.7";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -52,7 +52,11 @@ self.addEventListener("fetch", e => {
       return cache.match(e.request).then(cachedResponse => {
         // Dispara a busca na rede em segundo plano para atualizar o cache
         const fetchPromise = fetch(e.request).then(networkResponse => {
-          if (networkResponse.status === 200) {
+          // Só faz cache de respostas HTTP/HTTPS válidas (ignora chrome-extension etc)
+          if (
+            networkResponse.status === 200 &&
+            e.request.url.startsWith("http")
+          ) {
             cache.put(e.request, networkResponse.clone());
           }
           return networkResponse;

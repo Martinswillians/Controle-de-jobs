@@ -507,7 +507,7 @@ a:hover { color: var(--accent-light); }
 .badge-pago_nf_pdf { background: var(--purple-dim); color: var(--purple); }
 
 /* Row actions */
-.row-actions { display: flex; gap: 6px; opacity: 0; transition: opacity .15s; }
+.row-actions { display: flex; gap: 6px; opacity: 1; transition: opacity .15s; }
 .jobs-table tbody tr:hover .row-actions { opacity: 1; }
 .row-btn {
   background: var(--bg3);
@@ -619,6 +619,7 @@ a:hover { color: var(--accent-light); }
   gap: 16px;
 }
 .reports-grid .section-card h3 { margin-bottom: 12px; }
+.reports-grid canvas { max-height: 200px; }
 
 .top-clients-list { display: flex; flex-direction: column; gap: 10px; }
 .top-client-item {
@@ -1078,6 +1079,13 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+/* Dashboard page-header: título em cima, controles embaixo */
+#page-dashboard .page-header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .clickable-row { cursor: pointer; }

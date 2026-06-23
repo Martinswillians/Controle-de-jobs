@@ -2,7 +2,7 @@
 // Service Worker — Controle de Job (Atualizado)
 // ═══════════════════════════════════════════════
 // Mude essa versão sempre que fizer uma grande atualização no código do app
-const CACHE_NAME = "jobcontrol-v3.2";
+const CACHE_NAME = "jobcontrol-v3.4";
 const STATIC_ASSETS = [
   "./",
   "./index.html",

@@ -71,12 +71,12 @@ export function renderClientsList() {
       }</td>
       <td>
         <div class="row-actions" style="opacity:1">
-          <button class="row-btn" data-cedit="${c.id}" title="Editar">✏️</button>
+          <button class="row-btn" data-cedit="${c.id}" title="Editar">✏️ Editar</button>
           <button class="row-btn ${isInativo ? '' : 'delete'}" 
             data-ctoggle="${c.id}" 
             data-cstatus="${c.status || 'ativo'}"
             title="${isInativo ? 'Reativar' : 'Inativar'}">
-            ${isInativo ? '♻️' : '🚫'}
+            ${isInativo ? '♻️ Reativar' : '🚫 Inativar'}
           </button>
           <button class="row-btn delete" data-cdel="${c.id}" title="Excluir">🗑️</button>
         </div>

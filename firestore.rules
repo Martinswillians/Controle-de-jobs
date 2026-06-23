@@ -1,14 +1,22 @@
-// firestore.rules
-// Cole estas regras no Firebase Console → Firestore → Rules
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Cada usuário acessa apenas seus próprios dados
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Próprio usuário lê/escreve seu perfil; admin também pode ler/escrever (para aprovar/bloquear)
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.auth.uid == "w9XSwxwewTaXwk0hCpyOuvCcd7G3"
+      );
+      allow write: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.auth.uid == "w9XSwxwewTaXwk0hCpyOuvCcd7G3"
+      );
 
       match /jobs/{jobId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /clients/{clientId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }

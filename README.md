@@ -39,11 +39,32 @@ Aplicativo de gestão financeira para freelancers de audiovisual.
 3. Escolha a região (sugestão: `southamerica-east1` — São Paulo)
 4. Após criar, vá em **Regras** e cole o conteúdo de `firestore.rules`
 
-### 4. Configurar o Storage
+### 4. Configurar o Cloudinary (upload de PDFs de NF)
 
-1. No Firebase Console → **Storage** → Começar
-2. Aceite as regras padrão
-3. Após criar, vá em **Regras** e cole o conteúdo de `storage.rules`
+O app usa o **Cloudinary** para armazenar os PDFs das notas fiscais — totalmente gratuito, sem precisar do plano pago do Firebase Storage.
+
+1. Crie uma conta gratuita em **[cloudinary.com](https://cloudinary.com/users/register/free)**
+2. No painel, anote seu **Cloud Name** (aparece no topo do Dashboard)
+3. Vá em **Settings** (ícone de engrenagem) → aba **Upload**
+4. Em "Upload presets", clique **Add upload preset**
+5. Configure:
+   - **Signing Mode**: troque para **Unsigned**
+   - **Folder**: deixe em branco (o app já organiza por pasta automaticamente)
+   - Salve e copie o **nome do preset** gerado
+6. Ainda em Settings, vá na aba **Security**
+7. Role até **"PDF and ZIP files delivery"** e marque **"Allow delivery of PDF and ZIP files"**
+8. Aceite os termos e salve
+
+Agora abra o arquivo `js/cloudinary.js` e substitua:
+
+```js
+const CLOUDINARY_CLOUD_NAME = "SEU_CLOUD_NAME";
+const CLOUDINARY_UPLOAD_PRESET = "SEU_UPLOAD_PRESET";
+```
+
+Pelos valores reais que você copiou.
+
+⚠️ **Importante sobre segurança**: como o upload é "unsigned" (sem assinatura de servidor), qualquer pessoa com o link do seu preset tecnicamente poderia enviar arquivos para sua conta Cloudinary. Isso é aceitável para um app pessoal/pequeno, mas evite divulgar publicamente as credenciais do Cloudinary. O plano gratuito tem limite de 25GB de armazenamento e 25GB de banda por mês — mais que suficiente para notas fiscais.
 
 ### 5. Adicionar configuração no app
 

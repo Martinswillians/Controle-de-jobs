@@ -70,7 +70,7 @@ export function renderClientsList() {
         : '<span class="badge badge-ativo">🟢 Ativo</span>'
       }</td>
       <td>
-        <div class="row-actions" style="opacity:1">
+        <div class="row-actions">
           <button class="row-btn" data-cedit="${c.id}" title="Editar">✏️ Editar</button>
           <button class="row-btn ${isInativo ? '' : 'delete'}" 
             data-ctoggle="${c.id}" 

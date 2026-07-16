@@ -1007,6 +1007,18 @@ $("repPeriodSelect").addEventListener("change", (e) => {
 
 function renderReports() {
   populateReportPeriods();
+
+  // Garante que cada canvas está dentro de um .chart-wrap com altura fixa
+  ["chartMes","chartCliente","chartStatus"].forEach(id => {
+    const canvas = document.getElementById(id);
+    if (canvas && !canvas.parentElement.classList.contains("chart-wrap")) {
+      const wrap = document.createElement("div");
+      wrap.className = "chart-wrap";
+      canvas.parentNode.insertBefore(wrap, canvas);
+      wrap.appendChild(canvas);
+    }
+  });
+
   renderNFvsMEI();
   renderChartMes();
   renderChartCliente();
@@ -1091,7 +1103,7 @@ function renderChartMes() {
       labels,
       datasets: [{ label: "Faturamento", data, backgroundColor: "#7c6af788", borderColor: "#7c6af7", borderWidth: 2, borderRadius: 6 }]
     },
-    options: { ...chartDefaults(), plugins: { legend: { display: false } } }
+    options: { maintainAspectRatio: false, ...chartDefaults(), plugins: { legend: { display: false } } }
   });
 }
 
@@ -1109,7 +1121,7 @@ function renderChartCliente() {
       labels: entries.map(e=>e[0]),
       datasets: [{ data: entries.map(e=>e[1]), backgroundColor: colors, borderWidth: 0 }]
     },
-    options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: "#9090b0", font: { family: "Space Grotesk" }, padding: 12 } } } }
+    options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: "bottom", labels: { color: "#9090b0", font: { family: "Space Grotesk" }, padding: 12 } } } }
   });
 }
 
@@ -1125,7 +1137,7 @@ function renderChartStatus() {
       labels: ["Pendente", "Pago", "Pago + NF", "Pago + NF + PDF"],
       datasets: [{ data: Object.values(counts), backgroundColor: ["#f39c12","#2ecc71","#3498db","#9b59b6"], borderWidth: 0 }]
     },
-    options: { responsive: true, plugins: { legend: { position: "bottom", labels: { color: "#9090b0", font: { family: "Space Grotesk" }, padding: 12 } } } }
+    options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: "bottom", labels: { color: "#9090b0", font: { family: "Space Grotesk" }, padding: 12 } } } }
   });
 }
 

@@ -631,7 +631,19 @@ a:hover { color: var(--accent-light); }
   gap: 16px;
 }
 .reports-grid .section-card h3 { margin-bottom: 12px; }
-.reports-grid canvas { max-height: 200px; }
+
+/* Container de altura fixa para os gráficos */
+.chart-wrap {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+.chart-wrap canvas {
+  position: absolute !important;
+  top: 0; left: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
 
 .top-clients-list { display: flex; flex-direction: column; gap: 10px; }
 .top-client-item {

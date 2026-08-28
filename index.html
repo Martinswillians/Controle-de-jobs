@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=23" />
+  <link rel="stylesheet" href="css/style.css?v=24" />
 </head>
 <body>
 
@@ -508,9 +508,10 @@
     </div>
     <div class="modal-body">
       <div class="form-grid">
-        <div class="field">
-          <label>Data do Job *</label>
-          <input type="date" id="jobDate" />
+        <div class="field field-full">
+          <label>Data(s) do Job * <span class="field-hint">— adicione mais de uma diária se o job durou vários dias</span></label>
+          <div id="jobDatesList" class="job-dates-list"></div>
+          <button type="button" class="btn-outline btn-sm" id="addJobDateBtn">+ Adicionar diária</button>
         </div>
         <div class="field">
           <label>Valor (R$) *</label>
@@ -745,9 +746,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=23"></script>
-<script type="module" src="js/app.js?v=23"></script>
-<script type="module" src="js/clients.js?v=23"></script>
+<script type="module" src="js/firebase-config.js?v=24"></script>
+<script type="module" src="js/app.js?v=24"></script>
+<script type="module" src="js/clients.js?v=24"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

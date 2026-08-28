@@ -53,6 +53,28 @@ const fmt = v => `R$ ${Number(v).toLocaleString("pt-BR", {minimumFractionDigits:
 const fmtDate = d => d ? d.split("-").reverse().join("/") : "-";
 const today = () => new Date().toISOString().split("T")[0];
 
+// Retorna as datas de um job (suporta jobs antigos com apenas "date" único)
+function jobDatesArray(j) {
+  if (Array.isArray(j.dates) && j.dates.length) return [...j.dates].filter(Boolean).sort();
+  return j.date ? [j.date] : [];
+}
+// Exibição em HTML (tabelas/telas) — inclui uma "pill" com a contagem de diárias
+function fmtJobDates(j) {
+  const dates = jobDatesArray(j);
+  if (!dates.length) return "-";
+  if (dates.length === 1) return fmtDate(dates[0]);
+  if (dates.length <= 3) return `${dates.map(fmtDate).join(", ")}<span class="job-date-multi-tag">${dates.length} diárias</span>`;
+  return `${fmtDate(dates[0])} → ${fmtDate(dates[dates.length - 1])}<span class="job-date-multi-tag">${dates.length} diárias</span>`;
+}
+// Exibição em texto puro (CSV/Excel/PDF) — sem HTML
+function fmtJobDatesPlain(j) {
+  const dates = jobDatesArray(j);
+  if (!dates.length) return "-";
+  if (dates.length === 1) return fmtDate(dates[0]);
+  if (dates.length <= 3) return `${dates.map(fmtDate).join(", ")} (${dates.length} diárias)`;
+  return `${fmtDate(dates[0])} a ${fmtDate(dates[dates.length - 1])} (${dates.length} diárias)`;
+}
+
 function showToast(msg, type = "success", ms = 3000) {
   const t = $("toast");
   t.textContent = msg;
@@ -385,7 +407,7 @@ function renderDashboard() {
     const tr = document.createElement("tr");
     tr.classList.add("clickable-row");
     tr.innerHTML = `
-      <td class="job-date">${fmtDate(j.date)}</td>
+      <td class="job-date">${fmtJobDates(j)}</td>
       <td><div class="job-name">${j.name}</div></td>
       <td><div class="job-client">${j.client}</div></td>
       <td class="job-value">${fmt(j.value)}</td>
@@ -464,7 +486,7 @@ function renderJobsPage() {
     const tr = document.createElement("tr");
     tr.classList.add("clickable-row");
     tr.innerHTML = `
-      <td class="job-date">${fmtDate(j.date)}</td>
+      <td class="job-date">${fmtJobDates(j)}</td>
       <td><div class="job-name">${j.name}</div><div class="job-client">${j.client}</div></td>
       <td>${j.client}</td>
       <td class="job-value">${fmt(j.value)}</td>
@@ -544,6 +566,8 @@ function bindRowActions(tbody) {
 // ─────────────────────────────────────────────
 // JOB MODAL
 // ─────────────────────────────────────────────
+let jobModalDates = [];
+
 function openJobModal(jobId = null) {
   editingJobId = jobId;
   $("jobModalTitle").textContent = jobId ? "Editar Job" : "Novo Job";
@@ -551,7 +575,8 @@ function openJobModal(jobId = null) {
   if (jobId) {
     const j = allJobs.find(x => x.id === jobId);
     if (!j) return;
-    $("jobDate").value = j.date || "";
+    const existingDates = jobDatesArray(j);
+    jobModalDates = existingDates.length ? existingDates : [today()];
     $("jobName").value = j.name || "";
     $("jobClient").value = j.client || "";
     $("jobValue").value = j.value || "";
@@ -559,7 +584,7 @@ function openJobModal(jobId = null) {
     $("jobStatus").value = j.status || "pendente";
     $("jobPayDate").value = j.payDate || "";
   } else {
-    $("jobDate").value = today();
+    jobModalDates = [today()];
     $("jobName").value = "";
     $("jobClient").value = "";
     $("jobValue").value = "";
@@ -568,9 +593,49 @@ function openJobModal(jobId = null) {
     $("jobPayDate").value = "";
   }
 
+  renderJobDateRows();
   togglePayDateField();
   $("jobModal").classList.remove("hidden");
 }
+
+// ─────────────────────────────────────────────
+// MULTI-DATA (diárias) NO MODAL DE JOB
+// ─────────────────────────────────────────────
+function renderJobDateRows() {
+  const list = $("jobDatesList");
+  list.innerHTML = jobModalDates.map((d, i) => `
+    <div class="job-date-row">
+      <input type="date" class="job-date-input" data-idx="${i}" value="${d || ""}" />
+      <button type="button" class="job-date-remove" data-idx="${i}" title="Remover diária" ${jobModalDates.length <= 1 ? "disabled" : ""}>✕</button>
+    </div>`).join("");
+
+  list.querySelectorAll(".job-date-input").forEach(inp => {
+    inp.addEventListener("change", e => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      jobModalDates[idx] = e.target.value;
+    });
+  });
+  list.querySelectorAll(".job-date-remove").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (jobModalDates.length <= 1) return;
+      const idx = parseInt(btn.dataset.idx, 10);
+      jobModalDates.splice(idx, 1);
+      renderJobDateRows();
+    });
+  });
+}
+
+$("addJobDateBtn").addEventListener("click", () => {
+  const last = jobModalDates[jobModalDates.length - 1];
+  let next = today();
+  if (last) {
+    const d = new Date(last + "T00:00:00");
+    d.setDate(d.getDate() + 1);
+    next = d.toISOString().split("T")[0];
+  }
+  jobModalDates.push(next);
+  renderJobDateRows();
+});
 
 function closeJobModal() { $("jobModal").classList.add("hidden"); editingJobId = null; }
 $("closeJobModal").addEventListener("click", closeJobModal);
@@ -583,7 +648,7 @@ function togglePayDateField() {
 }
 
 $("saveJobBtn").addEventListener("click", async () => {
-  const date = $("jobDate").value;
+  const dates = [...new Set(jobModalDates.filter(Boolean))].sort();
   const name = $("jobName").value.trim();
   const client = $("jobClient").value.trim();
   const value = parseFloat($("jobValue").value);
@@ -591,14 +656,14 @@ $("saveJobBtn").addEventListener("click", async () => {
   const status = $("jobStatus").value;
   const payDate = $("jobPayDate").value;
 
-  if (!date || !name || !client || isNaN(value) || value < 0)
+  if (!dates.length || !name || !client || isNaN(value) || value < 0)
     return showToast("Preencha todos os campos obrigatórios.", "error");
 
   if (!currentUser) return showToast("Sessão expirada. Faça login novamente.", "error");
 
   loading(true);
   try {
-    const data = { date, name, client, value, notes, status, payDate: status !== "pendente" ? payDate : "", updatedAt: new Date() };
+    const data = { date: dates[0], dates, name, client, value, notes, status, payDate: status !== "pendente" ? payDate : "", updatedAt: new Date() };
     if (editingJobId) {
       await updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data);
       showToast("Job atualizado!");
@@ -708,7 +773,7 @@ function openNFViewModal(jobId) {
       <div class="nf-meta">
         <span>💰 ${fmt(j.value)}</span>
         <span>📅 Emissão: ${fmtDate(j.nf.date)}</span>
-        <span>🗓️ Job: ${fmtDate(j.date)}</span>
+        <span>🗓️ Job: ${fmtJobDates(j)}</span>
       </div>
       <div class="nf-actions">
         ${j.nf.link ? `<a href="${j.nf.link}" target="_blank" class="btn-nf-link">🔗 Consultar NF</a>` : ""}
@@ -763,7 +828,7 @@ function openNFModal(jobId) {
 
   $("nfJobInfo").innerHTML = `
     <strong>${j.name}</strong> — ${j.client}<br>
-    <span style="color:var(--text2)">Valor: ${fmt(j.value)} | Data: ${fmtDate(j.date)}</span>`;
+    <span style="color:var(--text2)">Valor: ${fmt(j.value)} | Data: ${fmtJobDates(j)}</span>`;
 
   const nf = j.nf || {};
   $("nfNumber").value = nf.number || "";
@@ -928,7 +993,7 @@ function renderNFPage() {
       <div class="nf-meta">
         <span>💰 ${fmt(j.value)}</span>
         <span>📅 Emissão: ${fmtDate(j.nf.date)}</span>
-        <span>🗓️ Job: ${fmtDate(j.date)}</span>
+        <span>🗓️ Job: ${fmtJobDates(j)}</span>
       </div>
       <div class="nf-actions">
         ${j.nf.link ? `<a href="${j.nf.link}" target="_blank" class="btn-nf-link">🔗 Consultar NF</a>` : ""}
@@ -1164,7 +1229,7 @@ function renderTopClientes() {
 $("repExportExcel").addEventListener("click", () => {
   const jobs = getReportJobs();
   const data = jobs.map(j => ({
-    Data: fmtDate(j.date),
+    Data: fmtJobDatesPlain(j),
     Job: j.name,
     Cliente: j.client,
     Valor: Number(j.value),
@@ -1194,7 +1259,7 @@ $("repExportPDF").addEventListener("click", () => {
   doc.autoTable({
     startY: 28,
     head: [["Data","Job","Cliente","Valor","Status"]],
-    body: jobs.map(j => [fmtDate(j.date), j.name, j.client, fmt(j.value), statusLabel(j.status)]),
+    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), statusLabel(j.status)]),
     foot: [["","","","TOTAL", fmt(total)]],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [124,106,247] },
@@ -1287,9 +1352,9 @@ function updateMEIAlert() {
 // ─────────────────────────────────────────────
 $("exportCSV").addEventListener("click", () => {
   const jobs = getFilteredJobs();
-  const header = ["Data","Job","Cliente","Valor","Status","NF Número","NF Data","Observações"];
+  const header = ["Data(s)","Job","Cliente","Valor","Status","NF Número","NF Data","Observações"];
   const rows = jobs.map(j => [
-    j.date, j.name, j.client, j.value, statusLabel(j.status),
+    jobDatesArray(j).join("; "), j.name, j.client, j.value, statusLabel(j.status),
     j.nf?.number || "", j.nf?.date || "", j.notes || ""
   ]);
   const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
@@ -1299,7 +1364,7 @@ $("exportCSV").addEventListener("click", () => {
 $("exportExcel").addEventListener("click", () => {
   const jobs = getFilteredJobs();
   const data = jobs.map(j => ({
-    Data: fmtDate(j.date),
+    Data: fmtJobDatesPlain(j),
     Job: j.name,
     Cliente: j.client,
     Valor: Number(j.value),
@@ -1328,7 +1393,7 @@ $("exportPDF").addEventListener("click", () => {
   doc.autoTable({
     startY: 28,
     head: [["Data","Job","Cliente","Valor","Status"]],
-    body: jobs.map(j => [fmtDate(j.date), j.name, j.client, fmt(j.value), statusLabel(j.status)]),
+    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), statusLabel(j.status)]),
     foot: [["","","","TOTAL", fmt(total)]],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [124,106,247] },

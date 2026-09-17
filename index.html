@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=24" />
+  <link rel="stylesheet" href="css/style.css?v=25" />
 </head>
 <body>
 
@@ -513,9 +513,25 @@
           <div id="jobDatesList" class="job-dates-list"></div>
           <button type="button" class="btn-outline btn-sm" id="addJobDateBtn">+ Adicionar diária</button>
         </div>
-        <div class="field">
+        <div class="field field-full">
+          <label>Tipo de Valor</label>
+          <div class="mode-toggle" id="pricingModeToggle">
+            <button type="button" class="mode-btn active" data-mode="fixo">💰 Valor Fixo</button>
+            <button type="button" class="mode-btn" data-mode="diaria">📅 Por Diária</button>
+            <button type="button" class="mode-btn" data-mode="hora">⏱️ Por Hora</button>
+          </div>
+        </div>
+        <div class="field" id="valueFixedField">
           <label>Valor (R$) *</label>
           <input type="number" id="jobValue" placeholder="0,00" step="0.01" min="0" />
+        </div>
+        <div class="field hidden" id="valueRateField">
+          <label id="valueRateLabel">Valor da Diária (R$) *</label>
+          <input type="number" id="jobRate" placeholder="0,00" step="0.01" min="0" />
+        </div>
+        <div class="field hidden" id="calcTotalField">
+          <label>Valor Total do Job (calculado)</label>
+          <div class="calc-total-box" id="calcTotalBox">R$ 0,00</div>
         </div>
         <div class="field field-full">
           <label>Nome do Job *</label>
@@ -542,6 +558,18 @@
         <div class="field" id="payDateField">
           <label>Data do Pagamento</label>
           <input type="date" id="jobPayDate" />
+        </div>
+        <div class="field field-full hidden" id="paymentTypeField">
+          <label>Tipo de Pagamento</label>
+          <div class="mode-toggle" id="paymentTypeToggle">
+            <button type="button" class="mode-btn active" data-ptype="total">✅ Pago Total</button>
+            <button type="button" class="mode-btn" data-ptype="parcial">🟠 Pago Parcial</button>
+          </div>
+        </div>
+        <div class="field field-full hidden" id="paidAmountField">
+          <label>Valor Pago (R$) *</label>
+          <input type="number" id="jobPaidAmount" placeholder="0,00" step="0.01" min="0" />
+          <div class="pending-hint" id="pendingHint"></div>
         </div>
       </div>
     </div>
@@ -746,9 +774,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=24"></script>
-<script type="module" src="js/app.js?v=24"></script>
-<script type="module" src="js/clients.js?v=24"></script>
+<script type="module" src="js/firebase-config.js?v=25"></script>
+<script type="module" src="js/app.js?v=25"></script>
+<script type="module" src="js/clients.js?v=25"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

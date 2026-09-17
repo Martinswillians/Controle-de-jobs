@@ -1246,31 +1246,67 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
 
 .nf-icon { text-align: center; }
 
-/* NF card — delete row: discreto, mesmo nível dos outros botões */
-.nf-delete-row {
-  margin-top: 8px;
+/* Modal de NF — seções (Pagamento / Lista de NFs / Formulário) */
+.nf-section {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
-.btn-nf-delete {
-  width: auto;
+.nf-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.nf-section-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--accent-light);
+  margin-bottom: 10px;
+}
+
+.nf-list { display: flex; flex-direction: column; gap: 8px; }
+.nf-list-empty { color: var(--text2); font-size: 13px; padding: 6px 0; }
+.nf-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.nf-list-item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.nf-list-item-meta {
+  font-size: 11px;
+  color: var(--text2);
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nf-list-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.nf-list-item-actions button {
   background: transparent;
   border: 1px solid var(--border2);
-  color: var(--text3);
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 500;
+  color: var(--text2);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
   cursor: pointer;
+  font-size: 13px;
   transition: all .15s;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
 }
-.btn-nf-delete:hover {
-  border-color: var(--red);
-  color: var(--red);
-  background: var(--red-dim);
+.nf-list-item-actions button:hover { border-color: var(--accent); color: var(--accent-light); }
+.nf-list-item-actions button.danger:hover { border-color: var(--red); color: var(--red); background: var(--red-dim); }
+
+.nf-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
 }
+
+/* NF card (página de Notas Fiscais) — vários links/PDFs quando há mais de uma NF */
+.nf-actions a, .nf-actions button { white-space: nowrap; }
 
 /* ══════════════════════════════════════════
    DASHBOARD VIEW TOGGLE & STATUS FILTER

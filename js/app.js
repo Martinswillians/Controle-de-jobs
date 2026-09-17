@@ -120,6 +120,13 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+// Nome de exibição do cliente: usa o Nome Fantasia cadastrado, se houver; senão, o nome salvo no job
+function clientDisplayName(name) {
+  if (!name) return name;
+  const c = getClientData(name);
+  return (c && c.tradeName) ? c.tradeName : name;
+}
+
 // Valida pagamento parcial. Retorna null se ok, ou uma mensagem de erro.
 function validatePartialPayment(value, paymentType, paidAmount) {
   if (paymentType !== "parcial") return null;
@@ -463,7 +470,7 @@ function renderDashboard() {
     tr.innerHTML = `
       <td class="job-date">${fmtJobDates(j)}</td>
       <td><div class="job-name">${j.name}</div></td>
-      <td><div class="job-client">${j.client}</div></td>
+      <td><div class="job-client">${clientDisplayName(j.client)}</div></td>
       <td class="job-value">${valueCellHtml(j)}</td>
       <td>${statusBadge(j)}</td>
       <td>
@@ -541,8 +548,8 @@ function renderJobsPage() {
     tr.classList.add("clickable-row");
     tr.innerHTML = `
       <td class="job-date">${fmtJobDates(j)}</td>
-      <td><div class="job-name">${j.name}</div><div class="job-client">${j.client}</div></td>
-      <td>${j.client}</td>
+      <td><div class="job-name">${j.name}</div><div class="job-client">${clientDisplayName(j.client)}</div></td>
+      <td>${clientDisplayName(j.client)}</td>
       <td class="job-value">${valueCellHtml(j)}</td>
       <td>${statusBadge(j)}</td>
       <td class="nf-icon">
@@ -946,7 +953,7 @@ function openNFModal(jobId) {
   nfPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
 
   $("nfJobInfo").innerHTML = `
-    <strong>${j.name}</strong> — ${j.client}<br>
+    <strong>${j.name}</strong> — ${clientDisplayName(j.client)}<br>
     <span style="color:var(--text2)">Valor: ${valueInlineText(j)} | Data: ${fmtJobDates(j)}</span>`;
 
   $("nfPaidAmount").value = j.paidAmount || "";
@@ -999,6 +1006,7 @@ function updateNFPendingHint() {
 // ─────────────────────────────────────────────
 function renderNFList() {
   const box = $("nfExistingList");
+  $("nfListSectionLabel").textContent = `Notas Fiscais Cadastradas${nfModalList.length ? ` (${nfModalList.length})` : ""}`;
   if (!nfModalList.length) {
     box.innerHTML = `<div class="nf-list-empty">Nenhuma nota fiscal cadastrada ainda.</div>`;
     return;
@@ -1073,25 +1081,38 @@ function loadNFIntoForm(i) {
 $("nfCancelEditBtn").addEventListener("click", resetNFForm);
 
 $("nfAddToListBtn").addEventListener("click", () => {
-  const number = $("nfNumber").value.trim();
-  if (!number) return showToast("Informe o número da NF.", "error");
+  try {
+    const number = $("nfNumber").value.trim();
+    if (!number) return showToast("Informe o número da NF.", "error");
 
-  const entry = {
-    id: nfEditingIndex !== null ? nfModalList[nfEditingIndex].id : genId(),
-    number,
-    date: $("nfDate").value,
-    link: $("nfLink").value.trim(),
-    pdfUrl: currentPdfUrl,
-    pdfName: nfEditingIndex !== null ? nfModalList[nfEditingIndex].pdfName || "" : "",
-    _file: selectedPDFFile || null
-  };
-  if (selectedPDFFile) entry.pdfName = selectedPDFFile.name;
+    // Proteção: se o índice de edição não existir mais na lista (ex: removido), trata como novo
+    const isEditing = nfEditingIndex !== null && nfModalList[nfEditingIndex] != null;
 
-  if (nfEditingIndex !== null) nfModalList[nfEditingIndex] = entry;
-  else nfModalList.push(entry);
+    const entry = {
+      id: isEditing ? nfModalList[nfEditingIndex].id : genId(),
+      number,
+      date: $("nfDate").value,
+      link: $("nfLink").value.trim(),
+      pdfUrl: currentPdfUrl,
+      pdfName: isEditing ? (nfModalList[nfEditingIndex].pdfName || "") : "",
+      _file: selectedPDFFile || null
+    };
+    if (selectedPDFFile) entry.pdfName = selectedPDFFile.name;
 
-  resetNFForm();
-  renderNFList();
+    if (isEditing) {
+      nfModalList[nfEditingIndex] = entry;
+      showToast(`NF #${number} atualizada na lista.`);
+    } else {
+      nfModalList.push(entry);
+      showToast(`NF #${number} adicionada (${nfModalList.length} na lista). Adicione outra ou clique em Salvar Alterações.`);
+    }
+
+    resetNFForm();
+    renderNFList();
+  } catch (e) {
+    console.error("Erro ao adicionar NF à lista:", e);
+    showToast("Erro ao adicionar NF. Tente novamente.", "error");
+  }
 });
 
 // ─────────────────────────────────────────────
@@ -1202,18 +1223,27 @@ $("saveNFBtn").addEventListener("click", async () => {
     if (hasNFs) newStatus = hasPdf ? "pago_nf_pdf" : "pago_nf";
     else if (j.status === "pago_nf" || j.status === "pago_nf_pdf") newStatus = "pago";
 
+    const payDateFinal = j.payDate || today();
     await updateDoc(doc(db, "users", currentUser.uid, "jobs", nfTargetJobId), {
       nfs: finalNFs,
       nf: null,
       status: newStatus,
       paymentType,
       paidAmount,
-      payDate: j.payDate || today(),
+      payDate: payDateFinal,
       updatedAt: new Date()
     });
 
+    // Atualiza a cópia local imediatamente (evita reabrir o modal com dados desatualizados
+    // antes do listener do Firestore sincronizar de volta)
+    const idx = allJobs.findIndex(x => x.id === nfTargetJobId);
+    if (idx !== -1) {
+      allJobs[idx] = { ...allJobs[idx], nfs: finalNFs, nf: null, status: newStatus, paymentType, paidAmount, payDate: payDateFinal };
+    }
+
     showToast("Alterações salvas!");
     closeNFModal();
+    refreshAllViews();
   } catch (e) {
     console.error(e);
     showToast(e.message || "Erro ao salvar Notas Fiscais.", "error");
@@ -1239,7 +1269,7 @@ function renderNFPage() {
         ${statusBadge(j)}
       </div>
       <div class="nf-job-title">${j.name}</div>
-      <div class="nf-client">${j.client}</div>
+      <div class="nf-client">${clientDisplayName(j.client)}</div>
       <div class="nf-meta">
         <span>💰 ${valueInlineText(j)}</span>
         <span>📅 Emissão: ${nfs.map(n => fmtDate(n.date)).join(", ")}</span>

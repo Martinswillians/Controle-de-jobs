@@ -98,8 +98,42 @@ function statusLabel(s) {
   return map[s] || s;
 }
 
-function statusBadge(s) {
-  return `<span class="badge badge-${s}">${statusLabel(s)}</span>`;
+// Quanto já foi efetivamente recebido deste job
+function paidAmountOf(j) {
+  if (j.status === "pendente") return 0;
+  if (j.paymentType === "parcial") return Math.min(Number(j.paidAmount || 0), Number(j.value || 0));
+  return Number(j.value || 0);
+}
+// Quanto ainda falta receber deste job
+function pendingAmountOf(j) {
+  return Math.max(Number(j.value || 0) - paidAmountOf(j), 0);
+}
+
+function statusBadge(j) {
+  const s = j.status;
+  let html = `<span class="badge badge-${s}">${statusLabel(s)}</span>`;
+  if (s !== "pendente" && j.paymentType === "parcial") {
+    html += ` <span class="badge badge-parcial">🟠 Parcial</span>`;
+  }
+  return html;
+}
+
+// Texto de valor para spans inline (NF views), com detalhe de parcial
+function valueInlineText(j) {
+  const base = fmt(j.value);
+  if (j.status !== "pendente" && j.paymentType === "parcial") {
+    return `${base} (Pago ${fmt(paidAmountOf(j))} · Falta ${fmt(pendingAmountOf(j))})`;
+  }
+  return base;
+}
+
+// Célula de valor da tabela, com detalhe de pago/pendente quando parcial
+function valueCellHtml(j) {
+  const total = Number(j.value || 0);
+  if (j.status !== "pendente" && j.paymentType === "parcial") {
+    return `${fmt(total)}<div class="value-parcial-hint">Pago ${fmt(paidAmountOf(j))} · Falta ${fmt(pendingAmountOf(j))}</div>`;
+  }
+  return fmt(total);
 }
 
 // ─────────────────────────────────────────────
@@ -380,8 +414,8 @@ function renderDashboard() {
   $("cardJobsLabel").textContent = `Jobs ${periodLabel}`;
   $("dashJobsTitle").textContent = dashView === "month" ? "Jobs do mês" : "Jobs do ano";
 
-  const recebido = periodJobs.filter(j => j.status !== "pendente").reduce((a, j) => a + Number(j.value || 0), 0);
-  const pendente = periodJobs.filter(j => j.status === "pendente").reduce((a, j) => a + Number(j.value || 0), 0);
+  const recebido = periodJobs.reduce((a, j) => a + paidAmountOf(j), 0);
+  const pendente = periodJobs.reduce((a, j) => a + pendingAmountOf(j), 0);
   const total = periodJobs.reduce((a, j) => a + Number(j.value || 0), 0);
   const anoTotal = yearJobs.reduce((a, j) => a + Number(j.value || 0), 0);
   const anoNF = yearJobs.filter(j => j.status === "pago_nf" || j.status === "pago_nf_pdf")
@@ -410,8 +444,8 @@ function renderDashboard() {
       <td class="job-date">${fmtJobDates(j)}</td>
       <td><div class="job-name">${j.name}</div></td>
       <td><div class="job-client">${j.client}</div></td>
-      <td class="job-value">${fmt(j.value)}</td>
-      <td>${statusBadge(j.status)}</td>
+      <td class="job-value">${valueCellHtml(j)}</td>
+      <td>${statusBadge(j)}</td>
       <td>
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
@@ -489,8 +523,8 @@ function renderJobsPage() {
       <td class="job-date">${fmtJobDates(j)}</td>
       <td><div class="job-name">${j.name}</div><div class="job-client">${j.client}</div></td>
       <td>${j.client}</td>
-      <td class="job-value">${fmt(j.value)}</td>
-      <td>${statusBadge(j.status)}</td>
+      <td class="job-value">${valueCellHtml(j)}</td>
+      <td>${statusBadge(j)}</td>
       <td class="nf-icon">
         ${j.nf?.number
           ? `<button class="row-btn nf-view-btn" title="Visualizar NF" data-nfview="${j.id}">🧾 Ver NF</button>`
@@ -567,6 +601,9 @@ function bindRowActions(tbody) {
 // JOB MODAL
 // ─────────────────────────────────────────────
 let jobModalDates = [];
+let jobModalHours = {};   // { "YYYY-MM-DD": horas }
+let jobPricingMode = "fixo"; // "fixo" | "diaria" | "hora"
+let jobPaymentType = "total"; // "total" | "parcial"
 
 function openJobModal(jobId = null) {
   editingJobId = jobId;
@@ -577,25 +614,78 @@ function openJobModal(jobId = null) {
     if (!j) return;
     const existingDates = jobDatesArray(j);
     jobModalDates = existingDates.length ? existingDates : [today()];
+    jobModalHours = { ...(j.hours || {}) };
+    jobPricingMode = j.pricingMode || "fixo";
+    jobPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
     $("jobName").value = j.name || "";
     $("jobClient").value = j.client || "";
     $("jobValue").value = j.value || "";
+    $("jobRate").value = j.rate || "";
     $("jobNotes").value = j.notes || "";
     $("jobStatus").value = j.status || "pendente";
     $("jobPayDate").value = j.payDate || "";
+    $("jobPaidAmount").value = j.paidAmount || "";
   } else {
     jobModalDates = [today()];
+    jobModalHours = {};
+    jobPricingMode = "fixo";
+    jobPaymentType = "total";
     $("jobName").value = "";
     $("jobClient").value = "";
     $("jobValue").value = "";
+    $("jobRate").value = "";
     $("jobNotes").value = "";
     $("jobStatus").value = "pendente";
     $("jobPayDate").value = "";
+    $("jobPaidAmount").value = "";
   }
 
-  renderJobDateRows();
+  setPricingMode(jobPricingMode);
+  setPaymentType(jobPaymentType);
   togglePayDateField();
   $("jobModal").classList.remove("hidden");
+}
+
+// ─────────────────────────────────────────────
+// TIPO DE VALOR (Fixo / Diária / Hora)
+// ─────────────────────────────────────────────
+function setPricingMode(mode) {
+  jobPricingMode = mode;
+  $("pricingModeToggle").querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.mode === mode);
+  });
+  $("valueFixedField").classList.toggle("hidden", mode !== "fixo");
+  $("valueRateField").classList.toggle("hidden", mode === "fixo");
+  $("calcTotalField").classList.toggle("hidden", mode === "fixo");
+  $("valueRateLabel").textContent = mode === "hora" ? "Valor da Hora (R$) *" : "Valor da Diária (R$) *";
+  $("jobValue").readOnly = mode !== "fixo";
+  renderJobDateRows();
+  recalcJobValue();
+}
+
+$("pricingModeToggle").querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => setPricingMode(btn.dataset.mode));
+});
+
+$("jobRate").addEventListener("input", recalcJobValue);
+$("jobValue").addEventListener("input", updatePendingHint);
+
+function recalcJobValue() {
+  if (jobPricingMode === "fixo") { updatePendingHint(); return; }
+
+  const rate = parseFloat($("jobRate").value) || 0;
+  let total = 0;
+
+  if (jobPricingMode === "diaria") {
+    total = rate * jobModalDates.filter(Boolean).length;
+  } else if (jobPricingMode === "hora") {
+    const totalHoras = jobModalDates.reduce((a, d) => a + (parseFloat(jobModalHours[d]) || 0), 0);
+    total = rate * totalHoras;
+  }
+
+  $("calcTotalBox").textContent = fmt(total);
+  $("jobValue").value = total ? total.toFixed(2) : "";
+  updatePendingHint();
 }
 
 // ─────────────────────────────────────────────
@@ -603,24 +693,43 @@ function openJobModal(jobId = null) {
 // ─────────────────────────────────────────────
 function renderJobDateRows() {
   const list = $("jobDatesList");
+  const showHours = jobPricingMode === "hora";
   list.innerHTML = jobModalDates.map((d, i) => `
     <div class="job-date-row">
       <input type="date" class="job-date-input" data-idx="${i}" value="${d || ""}" />
+      ${showHours ? `<input type="number" class="job-date-hours" data-idx="${i}" placeholder="Horas" min="0" step="0.5" value="${jobModalHours[d] ?? ""}" />` : ""}
       <button type="button" class="job-date-remove" data-idx="${i}" title="Remover diária" ${jobModalDates.length <= 1 ? "disabled" : ""}>✕</button>
     </div>`).join("");
 
   list.querySelectorAll(".job-date-input").forEach(inp => {
     inp.addEventListener("change", e => {
       const idx = parseInt(e.target.dataset.idx, 10);
-      jobModalDates[idx] = e.target.value;
+      const oldDate = jobModalDates[idx];
+      const newDate = e.target.value;
+      if (jobPricingMode === "hora" && oldDate in jobModalHours) {
+        jobModalHours[newDate] = jobModalHours[oldDate];
+        delete jobModalHours[oldDate];
+      }
+      jobModalDates[idx] = newDate;
+      recalcJobValue();
+    });
+  });
+  list.querySelectorAll(".job-date-hours").forEach(inp => {
+    inp.addEventListener("input", e => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      const d = jobModalDates[idx];
+      jobModalHours[d] = e.target.value;
+      recalcJobValue();
     });
   });
   list.querySelectorAll(".job-date-remove").forEach(btn => {
     btn.addEventListener("click", () => {
       if (jobModalDates.length <= 1) return;
       const idx = parseInt(btn.dataset.idx, 10);
-      jobModalDates.splice(idx, 1);
+      const [removed] = jobModalDates.splice(idx, 1);
+      delete jobModalHours[removed];
       renderJobDateRows();
+      recalcJobValue();
     });
   });
 }
@@ -635,6 +744,7 @@ $("addJobDateBtn").addEventListener("click", () => {
   }
   jobModalDates.push(next);
   renderJobDateRows();
+  recalcJobValue();
 });
 
 function closeJobModal() { $("jobModal").classList.add("hidden"); editingJobId = null; }
@@ -645,6 +755,42 @@ $("jobStatus").addEventListener("change", togglePayDateField);
 function togglePayDateField() {
   const paid = $("jobStatus").value !== "pendente";
   $("payDateField").style.display = paid ? "block" : "none";
+  $("paymentTypeField").classList.toggle("hidden", !paid);
+  if (!paid) {
+    $("paidAmountField").classList.add("hidden");
+  } else {
+    $("paidAmountField").classList.toggle("hidden", jobPaymentType !== "parcial");
+    updatePendingHint();
+  }
+}
+
+// ─────────────────────────────────────────────
+// TIPO DE PAGAMENTO (Total / Parcial)
+// ─────────────────────────────────────────────
+function setPaymentType(type) {
+  jobPaymentType = type;
+  $("paymentTypeToggle").querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.ptype === type);
+  });
+  $("paidAmountField").classList.toggle("hidden", type !== "parcial");
+  updatePendingHint();
+}
+
+$("paymentTypeToggle").querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => setPaymentType(btn.dataset.ptype));
+});
+
+$("jobPaidAmount").addEventListener("input", updatePendingHint);
+
+function updatePendingHint() {
+  if (jobPaymentType !== "parcial" || $("jobStatus").value === "pendente") {
+    $("pendingHint").textContent = "";
+    return;
+  }
+  const total = parseFloat($("jobValue").value) || 0;
+  const paid = parseFloat($("jobPaidAmount").value) || 0;
+  const pending = Math.max(total - paid, 0);
+  $("pendingHint").textContent = `Valor pendente: ${fmt(pending)} de ${fmt(total)}`;
 }
 
 $("saveJobBtn").addEventListener("click", async () => {
@@ -655,15 +801,42 @@ $("saveJobBtn").addEventListener("click", async () => {
   const notes = $("jobNotes").value.trim();
   const status = $("jobStatus").value;
   const payDate = $("jobPayDate").value;
+  const rate = parseFloat($("jobRate").value) || 0;
 
   if (!dates.length || !name || !client || isNaN(value) || value < 0)
     return showToast("Preencha todos os campos obrigatórios.", "error");
+
+  if (jobPricingMode !== "fixo" && (!rate || rate <= 0)) {
+    return showToast(`Informe o valor da ${jobPricingMode === "hora" ? "hora" : "diária"}.`, "error");
+  }
+  if (jobPricingMode === "hora" && !dates.some(d => (parseFloat(jobModalHours[d]) || 0) > 0)) {
+    return showToast("Informe as horas trabalhadas em pelo menos um dia.", "error");
+  }
+
+  const isPaid = status !== "pendente";
+  const paymentType = isPaid && jobPaymentType === "parcial" ? "parcial" : "total";
+  let paidAmount = 0;
+  if (isPaid) {
+    paidAmount = paymentType === "parcial" ? (parseFloat($("jobPaidAmount").value) || 0) : value;
+    if (paymentType === "parcial" && (paidAmount <= 0 || paidAmount >= value)) {
+      return showToast("Informe um valor pago parcial maior que 0 e menor que o valor total.", "error");
+    }
+  }
 
   if (!currentUser) return showToast("Sessão expirada. Faça login novamente.", "error");
 
   loading(true);
   try {
-    const data = { date: dates[0], dates, name, client, value, notes, status, payDate: status !== "pendente" ? payDate : "", updatedAt: new Date() };
+    const data = {
+      date: dates[0], dates, name, client, value, notes, status,
+      payDate: isPaid ? payDate : "",
+      pricingMode: jobPricingMode,
+      rate: jobPricingMode === "fixo" ? null : rate,
+      hours: jobPricingMode === "hora" ? dates.reduce((o, d) => { o[d] = parseFloat(jobModalHours[d]) || 0; return o; }, {}) : null,
+      paymentType,
+      paidAmount,
+      updatedAt: new Date()
+    };
     if (editingJobId) {
       await updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data);
       showToast("Job atualizado!");
@@ -766,12 +939,12 @@ function openNFViewModal(jobId) {
     <div class="nf-card" style="border:none;padding:0">
       <div class="nf-card-header">
         <span class="nf-number">NF #${j.nf.number}</span>
-        ${statusBadge(j.status)}
+        ${statusBadge(j)}
       </div>
       <div class="nf-job-title">${j.name}</div>
       <div class="nf-client">${j.client}</div>
       <div class="nf-meta">
-        <span>💰 ${fmt(j.value)}</span>
+        <span>💰 ${valueInlineText(j)}</span>
         <span>📅 Emissão: ${fmtDate(j.nf.date)}</span>
         <span>🗓️ Job: ${fmtJobDates(j)}</span>
       </div>
@@ -828,7 +1001,7 @@ function openNFModal(jobId) {
 
   $("nfJobInfo").innerHTML = `
     <strong>${j.name}</strong> — ${j.client}<br>
-    <span style="color:var(--text2)">Valor: ${fmt(j.value)} | Data: ${fmtJobDates(j)}</span>`;
+    <span style="color:var(--text2)">Valor: ${valueInlineText(j)} | Data: ${fmtJobDates(j)}</span>`;
 
   const nf = j.nf || {};
   $("nfNumber").value = nf.number || "";
@@ -986,12 +1159,12 @@ function renderNFPage() {
     card.innerHTML = `
       <div class="nf-card-header">
         <span class="nf-number">NF #${j.nf.number}</span>
-        ${statusBadge(j.status)}
+        ${statusBadge(j)}
       </div>
       <div class="nf-job-title">${j.name}</div>
       <div class="nf-client">${j.client}</div>
       <div class="nf-meta">
-        <span>💰 ${fmt(j.value)}</span>
+        <span>💰 ${valueInlineText(j)}</span>
         <span>📅 Emissão: ${fmtDate(j.nf.date)}</span>
         <span>🗓️ Job: ${fmtJobDates(j)}</span>
       </div>
@@ -1233,6 +1406,8 @@ $("repExportExcel").addEventListener("click", () => {
     Job: j.name,
     Cliente: j.client,
     Valor: Number(j.value),
+    Pago: paidAmountOf(j),
+    Pendente: pendingAmountOf(j),
     Status: statusLabel(j.status),
     "NF Nº": j.nf?.number || "",
     "NF Data": j.nf?.date ? fmtDate(j.nf.date) : "",
@@ -1255,12 +1430,14 @@ $("repExportPDF").addEventListener("click", () => {
 
   const jobs = getReportJobs();
   const total = jobs.reduce((a,j)=>a+Number(j.value||0),0);
+  const totalPago = jobs.reduce((a,j)=>a+paidAmountOf(j),0);
+  const totalPendente = jobs.reduce((a,j)=>a+pendingAmountOf(j),0);
 
   doc.autoTable({
     startY: 28,
-    head: [["Data","Job","Cliente","Valor","Status"]],
-    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), statusLabel(j.status)]),
-    foot: [["","","","TOTAL", fmt(total)]],
+    head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
+    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabel(j.status)]),
+    foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [124,106,247] },
     footStyles: { fontStyle: "bold" }
@@ -1352,9 +1529,9 @@ function updateMEIAlert() {
 // ─────────────────────────────────────────────
 $("exportCSV").addEventListener("click", () => {
   const jobs = getFilteredJobs();
-  const header = ["Data(s)","Job","Cliente","Valor","Status","NF Número","NF Data","Observações"];
+  const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Observações"];
   const rows = jobs.map(j => [
-    jobDatesArray(j).join("; "), j.name, j.client, j.value, statusLabel(j.status),
+    jobDatesArray(j).join("; "), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     j.nf?.number || "", j.nf?.date || "", j.notes || ""
   ]);
   const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
@@ -1368,6 +1545,8 @@ $("exportExcel").addEventListener("click", () => {
     Job: j.name,
     Cliente: j.client,
     Valor: Number(j.value),
+    Pago: paidAmountOf(j),
+    Pendente: pendingAmountOf(j),
     Status: statusLabel(j.status),
     "NF Nº": j.nf?.number || "",
     "NF Data": fmtDate(j.nf?.date),
@@ -1389,12 +1568,14 @@ $("exportPDF").addEventListener("click", () => {
 
   const jobs = getFilteredJobs();
   const total = jobs.reduce((a,j)=>a+Number(j.value||0),0);
+  const totalPago = jobs.reduce((a,j)=>a+paidAmountOf(j),0);
+  const totalPendente = jobs.reduce((a,j)=>a+pendingAmountOf(j),0);
 
   doc.autoTable({
     startY: 28,
-    head: [["Data","Job","Cliente","Valor","Status"]],
-    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), statusLabel(j.status)]),
-    foot: [["","","","TOTAL", fmt(total)]],
+    head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
+    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabel(j.status)]),
+    foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [124,106,247] },
     footStyles: { fontStyle: "bold" }

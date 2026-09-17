@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=26" />
+  <link rel="stylesheet" href="css/style.css?v=27" />
 </head>
 <body>
 
@@ -595,18 +595,29 @@
           <input type="text" id="cName" placeholder="Ex: REBELS FILMES LTDA" />
         </div>
         <div class="field field-full">
-          <label>Nome Fantasia</label>
+          <label>Nome Fantasia <span class="field-hint">(opcional)</span></label>
           <input type="text" id="cTradeName" placeholder="Ex: Rebels Films" />
         </div>
         <div class="field">
-          <label>CNPJ / CPF</label>
+          <label>CNPJ / CPF <span class="field-hint">(opcional)</span></label>
           <input type="text" id="cCNPJ" placeholder="00.000.000/0001-00" maxlength="18" />
+        </div>
+      </div>
+      <div class="client-modal-section">👤 Contato na Empresa <span class="field-hint">(todos os campos opcionais)</span></div>
+      <div class="form-grid">
+        <div class="field">
+          <label>Nome do Contato</label>
+          <input type="text" id="cContactName" placeholder="Ex: Maria Silva" />
+        </div>
+        <div class="field">
+          <label>Cargo</label>
+          <input type="text" id="cContactRole" placeholder="Ex: Gerente de Produção" />
         </div>
         <div class="field">
           <label>Telefone / WhatsApp</label>
           <input type="tel" id="cPhone" placeholder="(61) 99999-9999" />
         </div>
-        <div class="field field-full">
+        <div class="field">
           <label>E-mail</label>
           <input type="email" id="cEmail" placeholder="contato@empresa.com.br" />
         </div>
@@ -675,7 +686,7 @@
       </div>
 
       <div class="nf-section">
-        <label class="nf-section-label">Notas Fiscais Cadastradas</label>
+        <label class="nf-section-label" id="nfListSectionLabel">Notas Fiscais Cadastradas</label>
         <div id="nfExistingList" class="nf-list"></div>
       </div>
 
@@ -787,9 +798,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=26"></script>
-<script type="module" src="js/app.js?v=26"></script>
-<script type="module" src="js/clients.js?v=26"></script>
+<script type="module" src="js/firebase-config.js?v=27"></script>
+<script type="module" src="js/app.js?v=27"></script>
+<script type="module" src="js/clients.js?v=27"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

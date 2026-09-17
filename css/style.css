@@ -353,6 +353,64 @@ a:hover { color: var(--accent-light); }
   white-space: nowrap;
 }
 
+.job-date-row input.job-date-hours {
+  flex: none;
+  width: 84px;
+}
+
+/* Toggle genérico (Tipo de Valor / Tipo de Pagamento) */
+.mode-toggle {
+  display: flex;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  padding: 8px 14px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  flex: 1;
+  min-width: 110px;
+}
+.mode-btn.active { background: var(--accent); color: #fff; }
+
+.calc-total-box {
+  background: var(--bg3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-light);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.pending-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--yellow);
+  font-weight: 600;
+}
+
+.value-parcial-hint {
+  font-size: 10px;
+  color: var(--yellow);
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.badge-parcial { background: var(--red-dim); color: var(--red); }
+
 /* Buttons */
 .btn-primary {
   background: var(--accent);

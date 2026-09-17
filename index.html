@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=25" />
+  <link rel="stylesheet" href="css/style.css?v=26" />
 </head>
 <body>
 
@@ -651,66 +651,79 @@
   </div>
 </div>
 
-<!-- NF VIEW MODAL (somente visualização) -->
-<div id="nfViewModal" class="modal-overlay hidden">
-  <div class="modal modal-sm">
-    <div class="modal-header">
-      <h3>Nota Fiscal</h3>
-      <button class="modal-close" id="closeNFViewModal">✕</button>
-    </div>
-    <div class="modal-body">
-      <div id="nfViewContent"></div>
-    </div>
-  </div>
-</div>
-
 <!-- NF MODAL -->
 <div id="nfModal" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-header">
-      <h3>Nota Fiscal</h3>
+      <h3>Notas Fiscais do Job</h3>
       <button class="modal-close" id="closeNFModal">✕</button>
     </div>
     <div class="modal-body">
       <div id="nfJobInfo" class="nf-job-info"></div>
-      <div class="form-grid">
-        <div class="field">
-          <label>Número da NF</label>
-          <input type="text" id="nfNumber" placeholder="00001" />
+
+      <div class="nf-section">
+        <label class="nf-section-label">Situação de Pagamento</label>
+        <div class="mode-toggle" id="nfPaymentTypeToggle">
+          <button type="button" class="mode-btn active" data-ptype="total">✅ Pago Total</button>
+          <button type="button" class="mode-btn" data-ptype="parcial">🟠 Pago Parcial</button>
         </div>
-        <div class="field">
-          <label>Data de Emissão</label>
-          <input type="date" id="nfDate" />
+        <div class="field hidden" id="nfPaidAmountField" style="margin-top:10px">
+          <label>Valor Pago (R$) *</label>
+          <input type="number" id="nfPaidAmount" placeholder="0,00" step="0.01" min="0" />
+          <div class="pending-hint" id="nfPendingHint"></div>
         </div>
-        <div class="field field-full">
-          <label>Link de Consulta da NF</label>
-          <input type="url" id="nfLink" placeholder="https://..." />
-        </div>
-        <div class="field field-full">
-          <label>PDF da Nota Fiscal (opcional)</label>
-          <div id="nfPDFDropzone" class="pdf-dropzone">
-            <input type="file" id="nfPDFFile" accept="application/pdf" hidden />
-            <div id="nfPDFEmpty" class="pdf-dropzone-empty">
-              <span class="pdf-dropzone-icon">📄</span>
-              <span>Clique para escolher o PDF</span>
-              <span class="pdf-dropzone-sub">ou arraste o arquivo aqui · máx 5MB</span>
-            </div>
-            <div id="nfPDFPreview" class="pdf-dropzone-preview hidden">
-              <span class="pdf-file-icon">📎</span>
-              <span id="nfPDFFileName" class="pdf-file-name"></span>
-              <button type="button" id="nfPDFRemove" class="pdf-file-remove" title="Remover">✕</button>
-            </div>
-            <div id="nfPDFProgress" class="pdf-upload-progress hidden">
-              <div class="pdf-upload-bar"><div id="nfPDFProgressFill" class="pdf-upload-fill"></div></div>
-              <span id="nfPDFProgressText">Enviando...</span>
+      </div>
+
+      <div class="nf-section">
+        <label class="nf-section-label">Notas Fiscais Cadastradas</label>
+        <div id="nfExistingList" class="nf-list"></div>
+      </div>
+
+      <div class="nf-section">
+        <label class="nf-section-label" id="nfFormTitle">+ Nova Nota Fiscal</label>
+        <div class="form-grid">
+          <div class="field">
+            <label>Número da NF</label>
+            <input type="text" id="nfNumber" placeholder="00001" />
+          </div>
+          <div class="field">
+            <label>Data de Emissão</label>
+            <input type="date" id="nfDate" />
+          </div>
+          <div class="field field-full">
+            <label>Link de Consulta da NF</label>
+            <input type="url" id="nfLink" placeholder="https://..." />
+          </div>
+          <div class="field field-full">
+            <label>PDF da Nota Fiscal (opcional)</label>
+            <div id="nfPDFDropzone" class="pdf-dropzone">
+              <input type="file" id="nfPDFFile" accept="application/pdf" hidden />
+              <div id="nfPDFEmpty" class="pdf-dropzone-empty">
+                <span class="pdf-dropzone-icon">📄</span>
+                <span>Clique para escolher o PDF</span>
+                <span class="pdf-dropzone-sub">ou arraste o arquivo aqui · máx 5MB</span>
+              </div>
+              <div id="nfPDFPreview" class="pdf-dropzone-preview hidden">
+                <span class="pdf-file-icon">📎</span>
+                <span id="nfPDFFileName" class="pdf-file-name"></span>
+                <button type="button" id="nfPDFRemove" class="pdf-file-remove" title="Remover">✕</button>
+              </div>
+              <div id="nfPDFProgress" class="pdf-upload-progress hidden">
+                <div class="pdf-upload-bar"><div id="nfPDFProgressFill" class="pdf-upload-fill"></div></div>
+                <span id="nfPDFProgressText">Enviando...</span>
+              </div>
             </div>
           </div>
+        </div>
+        <div class="nf-form-actions">
+          <button type="button" class="btn-outline btn-sm hidden" id="nfCancelEditBtn">Cancelar edição</button>
+          <button type="button" class="btn-outline btn-sm" id="nfAddToListBtn">+ Adicionar à lista</button>
         </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-outline" id="cancelNFModal">Cancelar</button>
-      <button class="btn-primary" id="saveNFBtn">Salvar NF</button>
+      <button class="btn-primary" id="saveNFBtn">Salvar Alterações</button>
     </div>
   </div>
 </div>
@@ -774,9 +787,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=25"></script>
-<script type="module" src="js/app.js?v=25"></script>
-<script type="module" src="js/clients.js?v=25"></script>
+<script type="module" src="js/firebase-config.js?v=26"></script>
+<script type="module" src="js/app.js?v=26"></script>
+<script type="module" src="js/clients.js?v=26"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

@@ -109,6 +109,26 @@ function pendingAmountOf(j) {
   return Math.max(Number(j.value || 0) - paidAmountOf(j), 0);
 }
 
+// Lista de NFs do job (suporta jobs antigos com "nf" único)
+function nfsArray(j) {
+  if (Array.isArray(j.nfs)) return j.nfs;
+  if (j.nf?.number) return [j.nf];
+  return [];
+}
+
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+// Valida pagamento parcial. Retorna null se ok, ou uma mensagem de erro.
+function validatePartialPayment(value, paymentType, paidAmount) {
+  if (paymentType !== "parcial") return null;
+  if (isNaN(paidAmount) || paidAmount <= 0 || paidAmount >= value) {
+    return "Informe um valor pago parcial maior que 0 e menor que o valor total.";
+  }
+  return null;
+}
+
 function statusBadge(j) {
   const s = j.status;
   let html = `<span class="badge badge-${s}">${statusLabel(s)}</span>`;
@@ -449,7 +469,7 @@ function renderDashboard() {
       <td>
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
-          <button class="row-btn nf-edit-btn" title="Inserir/Editar NF" data-nf="${j.id}">🧾 NF</button>
+          <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;
@@ -509,8 +529,8 @@ function renderJobsPage() {
   if (fMonth) jobs = jobs.filter(j => j.date?.startsWith(fMonth));
   if (fClient) jobs = jobs.filter(j => j.client === fClient);
   if (fStatus) jobs = jobs.filter(j => j.status === fStatus);
-  if (fNF === "com") jobs = jobs.filter(j => j.nf?.number);
-  if (fNF === "sem") jobs = jobs.filter(j => !j.nf?.number);
+  if (fNF === "com") jobs = jobs.filter(j => nfsArray(j).length > 0);
+  if (fNF === "sem") jobs = jobs.filter(j => nfsArray(j).length === 0);
 
   const tbody = $("allJobsBody");
   tbody.innerHTML = "";
@@ -526,14 +546,14 @@ function renderJobsPage() {
       <td class="job-value">${valueCellHtml(j)}</td>
       <td>${statusBadge(j)}</td>
       <td class="nf-icon">
-        ${j.nf?.number
-          ? `<button class="row-btn nf-view-btn" title="Visualizar NF" data-nfview="${j.id}">🧾 Ver NF</button>`
+        ${nfsArray(j).length
+          ? `<span class="badge badge-parcial" style="background:var(--accent-dim);color:var(--accent-light)">🧾 ${nfsArray(j).length} NF${nfsArray(j).length > 1 ? "s" : ""}</span>`
           : ""}
       </td>
       <td>
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
-          <button class="row-btn nf-edit-btn" title="Inserir/Editar NF" data-nf="${j.id}">🧾 NF</button>
+          <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;
@@ -588,9 +608,6 @@ function bindRowActions(tbody) {
   });
   tbody.querySelectorAll("[data-nf]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openNFModal(btn.dataset.nf); });
-  });
-  tbody.querySelectorAll("[data-nfview]").forEach(btn => {
-    btn.addEventListener("click", e => { e.stopPropagation(); openNFViewModal(btn.dataset.nfview); });
   });
   tbody.querySelectorAll("[data-del]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openDeleteModal(btn.dataset.del); });
@@ -813,14 +830,19 @@ $("saveJobBtn").addEventListener("click", async () => {
     return showToast("Informe as horas trabalhadas em pelo menos um dia.", "error");
   }
 
+  const existingJob = editingJobId ? allJobs.find(x => x.id === editingJobId) : null;
+  const existingNFCount = existingJob ? nfsArray(existingJob).length : 0;
+  if (existingNFCount > 0 && status !== "pago_nf" && status !== "pago_nf_pdf") {
+    return showToast("Este job tem Notas Fiscais emitidas. Gerencie/remova as NFs pelo botão 🧾 NF antes de mudar o status.", "error");
+  }
+
   const isPaid = status !== "pendente";
   const paymentType = isPaid && jobPaymentType === "parcial" ? "parcial" : "total";
   let paidAmount = 0;
   if (isPaid) {
     paidAmount = paymentType === "parcial" ? (parseFloat($("jobPaidAmount").value) || 0) : value;
-    if (paymentType === "parcial" && (paidAmount <= 0 || paidAmount >= value)) {
-      return showToast("Informe um valor pago parcial maior que 0 e menor que o valor total.", "error");
-    }
+    const validationError = validatePartialPayment(value, paymentType, paidAmount);
+    if (validationError) return showToast(validationError, "error");
   }
 
   if (!currentUser) return showToast("Sessão expirada. Faça login novamente.", "error");
@@ -889,31 +911,10 @@ function openDeleteModal(jobId) {
 function closeDeleteModalFn() {
   $("deleteModal").classList.add("hidden");
   deletingJobId = null;
-  deletingNFJobId = null;
 }
 $("closeDeleteModal").addEventListener("click", closeDeleteModalFn);
 $("cancelDelete").addEventListener("click", closeDeleteModalFn);
 $("confirmDelete").addEventListener("click", async () => {
-  const mode = $("deleteModal").dataset.mode || "job";
-
-  if (mode === "nf") {
-    if (!deletingNFJobId) return;
-    loading(true);
-    try {
-      await updateDoc(doc(db, "users", currentUser.uid, "jobs", deletingNFJobId), {
-        nf: null,
-        status: "pago"
-      });
-      showToast("Nota Fiscal excluída.");
-      closeDeleteModalFn();
-      closeNFViewModal();
-    } catch (e) {
-      console.error(e);
-      showToast("Erro ao excluir NF.", "error");
-    } finally { loading(false); }
-    return;
-  }
-
   if (!deletingJobId) return;
   loading(true);
   try {
@@ -926,94 +927,33 @@ $("confirmDelete").addEventListener("click", async () => {
 });
 
 // ─────────────────────────────────────────────
-// NF VIEW MODAL (somente visualização)
-// ─────────────────────────────────────────────
-let nfViewJobId = null;
-
-function openNFViewModal(jobId) {
-  const j = allJobs.find(x => x.id === jobId);
-  if (!j || !j.nf?.number) return;
-  nfViewJobId = jobId;
-
-  $("nfViewContent").innerHTML = `
-    <div class="nf-card" style="border:none;padding:0">
-      <div class="nf-card-header">
-        <span class="nf-number">NF #${j.nf.number}</span>
-        ${statusBadge(j)}
-      </div>
-      <div class="nf-job-title">${j.name}</div>
-      <div class="nf-client">${j.client}</div>
-      <div class="nf-meta">
-        <span>💰 ${valueInlineText(j)}</span>
-        <span>📅 Emissão: ${fmtDate(j.nf.date)}</span>
-        <span>🗓️ Job: ${fmtJobDates(j)}</span>
-      </div>
-      <div class="nf-actions">
-        ${j.nf.link ? `<a href="${j.nf.link}" target="_blank" class="btn-nf-link">🔗 Consultar NF</a>` : ""}
-        ${j.nf.pdfUrl ? `<button class="btn-nf-pdf" id="nfViewOpenPdf">📄 Ver PDF</button>` : ""}
-        <button class="btn-nf-pdf" id="nfViewEditBtn">✏️ Editar</button>
-      </div>
-      <div class="nf-delete-row">
-        <button class="btn-nf-delete" id="nfViewDeleteBtn">🗑️ Excluir Nota Fiscal</button>
-      </div>
-    </div>`;
-
-  if (j.nf.pdfUrl) {
-    $("nfViewOpenPdf")?.addEventListener("click", () => window.open(j.nf.pdfUrl, "_blank"));
-  }
-  $("nfViewEditBtn").addEventListener("click", () => {
-    closeNFViewModal();
-    openNFModal(jobId);
-  });
-  $("nfViewDeleteBtn").addEventListener("click", () => confirmDeleteNF(jobId));
-
-  $("nfViewModal").classList.remove("hidden");
-}
-
-function closeNFViewModal() {
-  $("nfViewModal").classList.add("hidden");
-  nfViewJobId = null;
-}
-$("closeNFViewModal").addEventListener("click", closeNFViewModal);
-
-let deletingNFJobId = null;
-
-function confirmDeleteNF(jobId) {
-  deletingNFJobId = jobId;
-  $("deleteModal").querySelector(".modal-header h3").textContent = "Excluir Nota Fiscal";
-  $("deleteModal").querySelector(".modal-body p").textContent =
-    "Tem certeza que deseja excluir esta nota fiscal? O documento não poderá ser recuperado.";
-  $("deleteModal").dataset.mode = "nf";
-  $("deleteModal").classList.remove("hidden");
-}
-
-// ─────────────────────────────────────────────
-// NF MODAL
+// NF MODAL (gerencia lista de NFs + pagamento do job)
 // ─────────────────────────────────────────────
 let selectedPDFFile = null;
 let currentPdfUrl = "";
+let nfModalList = [];      // NFs do job (cópia de trabalho local)
+let nfEditingIndex = null; // índice em edição no formulário, ou null = adicionando nova
+let nfPaymentType = "total";
 
 function openNFModal(jobId) {
   nfTargetJobId = jobId;
   selectedPDFFile = null;
+  nfEditingIndex = null;
   const j = allJobs.find(x => x.id === jobId);
   if (!j) return;
+
+  nfModalList = nfsArray(j).map(nf => ({ ...nf, id: nf.id || genId() }));
+  nfPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
 
   $("nfJobInfo").innerHTML = `
     <strong>${j.name}</strong> — ${j.client}<br>
     <span style="color:var(--text2)">Valor: ${valueInlineText(j)} | Data: ${fmtJobDates(j)}</span>`;
 
-  const nf = j.nf || {};
-  $("nfNumber").value = nf.number || "";
-  $("nfDate").value = nf.date || today();
-  $("nfLink").value = nf.link || "";
-  currentPdfUrl = nf.pdfUrl || "";
+  $("nfPaidAmount").value = j.paidAmount || "";
+  setNFPaymentType(nfPaymentType);
 
-  // Reset dropzone UI
-  resetPDFDropzone();
-  if (currentPdfUrl) {
-    showPDFPreview(nf.pdfName || "PDF anexado", currentPdfUrl);
-  }
+  resetNFForm();
+  renderNFList();
 
   $("nfModal").classList.remove("hidden");
 }
@@ -1023,9 +963,136 @@ function closeNFModal() {
   nfTargetJobId = null;
   selectedPDFFile = null;
   currentPdfUrl = "";
+  nfModalList = [];
+  nfEditingIndex = null;
 }
 $("closeNFModal").addEventListener("click", closeNFModal);
 $("cancelNFModal").addEventListener("click", closeNFModal);
+
+// ─────────────────────────────────────────────
+// SITUAÇÃO DE PAGAMENTO (dentro do modal de NF)
+// ─────────────────────────────────────────────
+function setNFPaymentType(type) {
+  nfPaymentType = type;
+  $("nfPaymentTypeToggle").querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.ptype === type);
+  });
+  $("nfPaidAmountField").classList.toggle("hidden", type !== "parcial");
+  updateNFPendingHint();
+}
+$("nfPaymentTypeToggle").querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => setNFPaymentType(btn.dataset.ptype));
+});
+$("nfPaidAmount").addEventListener("input", updateNFPendingHint);
+
+function updateNFPendingHint() {
+  if (nfPaymentType !== "parcial") { $("nfPendingHint").textContent = ""; return; }
+  const j = allJobs.find(x => x.id === nfTargetJobId);
+  const total = Number(j?.value || 0);
+  const paid = parseFloat($("nfPaidAmount").value) || 0;
+  const pending = Math.max(total - paid, 0);
+  $("nfPendingHint").textContent = `Valor pendente: ${fmt(pending)} de ${fmt(total)}`;
+}
+
+// ─────────────────────────────────────────────
+// LISTA DE NFs (adicionar / editar / remover)
+// ─────────────────────────────────────────────
+function renderNFList() {
+  const box = $("nfExistingList");
+  if (!nfModalList.length) {
+    box.innerHTML = `<div class="nf-list-empty">Nenhuma nota fiscal cadastrada ainda.</div>`;
+    return;
+  }
+  box.innerHTML = nfModalList.map((nf, i) => `
+    <div class="nf-list-item">
+      <div class="nf-list-item-info">
+        <span class="nf-number">NF #${nf.number}</span>
+        <div class="nf-list-item-meta">
+          <span>📅 ${nf.date ? fmtDate(nf.date) : "-"}</span>
+          ${nf.link ? `<span>🔗 Link</span>` : ""}
+          ${nf.pdfUrl || nf._file ? `<span>📎 PDF</span>` : ""}
+        </div>
+      </div>
+      <div class="nf-list-item-actions">
+        ${nf.link ? `<button type="button" data-nflink="${i}" title="Abrir link">🔗</button>` : ""}
+        ${nf.pdfUrl ? `<button type="button" data-nfpdf="${i}" title="Ver PDF">📄</button>` : ""}
+        <button type="button" data-nfedit="${i}" title="Editar">✏️</button>
+        <button type="button" class="danger" data-nfremove="${i}" title="Remover">🗑️</button>
+      </div>
+    </div>`).join("");
+
+  box.querySelectorAll("[data-nflink]").forEach(btn => {
+    btn.addEventListener("click", () => window.open(nfModalList[+btn.dataset.nflink].link, "_blank"));
+  });
+  box.querySelectorAll("[data-nfpdf]").forEach(btn => {
+    btn.addEventListener("click", () => window.open(nfModalList[+btn.dataset.nfpdf].pdfUrl, "_blank"));
+  });
+  box.querySelectorAll("[data-nfedit]").forEach(btn => {
+    btn.addEventListener("click", () => loadNFIntoForm(+btn.dataset.nfedit));
+  });
+  box.querySelectorAll("[data-nfremove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const i = +btn.dataset.nfremove;
+      nfModalList.splice(i, 1);
+      if (nfEditingIndex === i) resetNFForm();
+      renderNFList();
+    });
+  });
+}
+
+function resetNFForm() {
+  nfEditingIndex = null;
+  $("nfFormTitle").textContent = "+ Nova Nota Fiscal";
+  $("nfNumber").value = "";
+  $("nfDate").value = today();
+  $("nfLink").value = "";
+  currentPdfUrl = "";
+  selectedPDFFile = null;
+  resetPDFDropzone();
+  $("nfCancelEditBtn").classList.add("hidden");
+  $("nfAddToListBtn").textContent = "+ Adicionar à lista";
+}
+
+function loadNFIntoForm(i) {
+  const nf = nfModalList[i];
+  if (!nf) return;
+  nfEditingIndex = i;
+  $("nfFormTitle").textContent = `Editando NF #${nf.number}`;
+  $("nfNumber").value = nf.number || "";
+  $("nfDate").value = nf.date || today();
+  $("nfLink").value = nf.link || "";
+  currentPdfUrl = nf.pdfUrl || "";
+  selectedPDFFile = nf._file || null;
+  resetPDFDropzone();
+  if (selectedPDFFile) showPDFPreview(selectedPDFFile.name, null);
+  else if (currentPdfUrl) showPDFPreview(nf.pdfName || "PDF anexado", currentPdfUrl);
+  $("nfCancelEditBtn").classList.remove("hidden");
+  $("nfAddToListBtn").textContent = "💾 Atualizar NF";
+}
+
+$("nfCancelEditBtn").addEventListener("click", resetNFForm);
+
+$("nfAddToListBtn").addEventListener("click", () => {
+  const number = $("nfNumber").value.trim();
+  if (!number) return showToast("Informe o número da NF.", "error");
+
+  const entry = {
+    id: nfEditingIndex !== null ? nfModalList[nfEditingIndex].id : genId(),
+    number,
+    date: $("nfDate").value,
+    link: $("nfLink").value.trim(),
+    pdfUrl: currentPdfUrl,
+    pdfName: nfEditingIndex !== null ? nfModalList[nfEditingIndex].pdfName || "" : "",
+    _file: selectedPDFFile || null
+  };
+  if (selectedPDFFile) entry.pdfName = selectedPDFFile.name;
+
+  if (nfEditingIndex !== null) nfModalList[nfEditingIndex] = entry;
+  else nfModalList.push(entry);
+
+  resetNFForm();
+  renderNFList();
+});
 
 // ─────────────────────────────────────────────
 // PDF DROPZONE UI
@@ -1064,6 +1131,7 @@ $("nfPDFFile").addEventListener("change", (e) => {
     return;
   }
   selectedPDFFile = file;
+  currentPdfUrl = "";
   showPDFPreview(file.name, null);
 });
 
@@ -1088,59 +1156,67 @@ $("nfPDFRemove").addEventListener("click", (e) => {
         return;
       }
       selectedPDFFile = file;
+      currentPdfUrl = "";
       showPDFPreview(file.name, null);
     }
   });
 });
 
+// ─────────────────────────────────────────────
+// SALVAR (NFs + situação de pagamento) — tudo em um só update
+// ─────────────────────────────────────────────
 $("saveNFBtn").addEventListener("click", async () => {
   if (!nfTargetJobId) return;
-  const number = $("nfNumber").value.trim();
-  const date = $("nfDate").value;
-  const link = $("nfLink").value.trim();
+  const j = allJobs.find(x => x.id === nfTargetJobId);
+  if (!j) return;
 
-  if (!number) return showToast("Informe o número da NF.", "error");
+  // Se o formulário de NF tem algo preenchido e não foi adicionado à lista, adiciona automaticamente
+  const pendingNumber = $("nfNumber").value.trim();
+  if (pendingNumber) {
+    $("nfAddToListBtn").click();
+  }
+
+  const paymentType = nfPaymentType;
+  const paidAmountInput = parseFloat($("nfPaidAmount").value) || 0;
+  const paidAmount = paymentType === "parcial" ? paidAmountInput : Number(j.value || 0);
+
+  const validationError = validatePartialPayment(Number(j.value || 0), paymentType, paidAmount);
+  if (validationError) return showToast(validationError, "error");
 
   loading(true);
   try {
-    const j = allJobs.find(x => x.id === nfTargetJobId);
-    let pdfUrl = currentPdfUrl;
-    let pdfName = j?.nf?.pdfName || "";
-
-    // Se selecionou novo arquivo, faz upload
-    if (selectedPDFFile) {
-      $("nfPDFProgress").classList.remove("hidden");
-      $("nfPDFPreview").classList.add("hidden");
-      try {
-        const result = await uploadPDF(selectedPDFFile, currentUser.uid, (pct) => {
-          $("nfPDFProgressFill").style.width = pct + "%";
-          $("nfPDFProgressText").textContent = `Enviando... ${pct}%`;
-        });
-        pdfUrl = result.url;
-        pdfName = selectedPDFFile.name;
-      } catch (uploadErr) {
-        showToast(uploadErr.message, "error");
-        loading(false);
-        $("nfPDFProgress").classList.add("hidden");
-        showPDFPreview(selectedPDFFile.name, null);
-        return;
+    // Upload de PDFs pendentes (novos arquivos anexados a qualquer NF da lista)
+    for (const nf of nfModalList) {
+      if (nf._file) {
+        const result = await uploadPDF(nf._file, currentUser.uid, () => {});
+        nf.pdfUrl = result.url;
+        nf.pdfName = nf._file.name;
+        delete nf._file;
       }
     }
 
-    const nfData = { number, date, link, pdfUrl, pdfName };
-    const newStatus = pdfUrl ? "pago_nf_pdf" : "pago_nf";
+    const finalNFs = nfModalList.map(({ _file, ...rest }) => rest);
+    const hasNFs = finalNFs.length > 0;
+    const hasPdf = finalNFs.some(n => n.pdfUrl);
+    let newStatus = j.status;
+    if (hasNFs) newStatus = hasPdf ? "pago_nf_pdf" : "pago_nf";
+    else if (j.status === "pago_nf" || j.status === "pago_nf_pdf") newStatus = "pago";
 
     await updateDoc(doc(db, "users", currentUser.uid, "jobs", nfTargetJobId), {
-      nf: nfData,
+      nfs: finalNFs,
+      nf: null,
       status: newStatus,
-      payDate: j?.payDate || today()
+      paymentType,
+      paidAmount,
+      payDate: j.payDate || today(),
+      updatedAt: new Date()
     });
 
-    showToast("Nota Fiscal salva!");
+    showToast("Alterações salvas!");
     closeNFModal();
   } catch (e) {
     console.error(e);
-    showToast("Erro ao salvar NF.", "error");
+    showToast(e.message || "Erro ao salvar Notas Fiscais.", "error");
   } finally { loading(false); }
 });
 
@@ -1148,33 +1224,31 @@ $("saveNFBtn").addEventListener("click", async () => {
 // NF PAGE
 // ─────────────────────────────────────────────
 function renderNFPage() {
-  const nfJobs = allJobs.filter(j => j.nf?.number);
+  const nfJobs = allJobs.filter(j => nfsArray(j).length > 0);
   const container = $("nfList");
   container.innerHTML = "";
   $("nfEmpty").classList.toggle("hidden", nfJobs.length > 0);
 
   nfJobs.forEach(j => {
+    const nfs = nfsArray(j);
     const card = document.createElement("div");
     card.className = "nf-card";
     card.innerHTML = `
       <div class="nf-card-header">
-        <span class="nf-number">NF #${j.nf.number}</span>
+        <span class="nf-number">${nfs.length} NF${nfs.length > 1 ? "s" : ""}: ${nfs.map(n => `#${n.number}`).join(", ")}</span>
         ${statusBadge(j)}
       </div>
       <div class="nf-job-title">${j.name}</div>
       <div class="nf-client">${j.client}</div>
       <div class="nf-meta">
         <span>💰 ${valueInlineText(j)}</span>
-        <span>📅 Emissão: ${fmtDate(j.nf.date)}</span>
+        <span>📅 Emissão: ${nfs.map(n => fmtDate(n.date)).join(", ")}</span>
         <span>🗓️ Job: ${fmtJobDates(j)}</span>
       </div>
       <div class="nf-actions">
-        ${j.nf.link ? `<a href="${j.nf.link}" target="_blank" class="btn-nf-link">🔗 Consultar NF</a>` : ""}
-        ${j.nf.pdfUrl ? `<button class="btn-nf-pdf" data-nfpage-pdf="${j.nf.pdfUrl}">📄 Ver PDF</button>` : ""}
-        <button class="btn-nf-pdf" data-nfpage-edit="${j.id}">✏️ Editar</button>
-      </div>
-      <div class="nf-delete-row">
-        <button class="btn-nf-delete" data-nfpage-del="${j.id}">🗑️ Excluir Nota Fiscal</button>
+        ${nfs.filter(n => n.link).map(n => `<a href="${n.link}" target="_blank" class="btn-nf-link">🔗 NF #${n.number}</a>`).join("")}
+        ${nfs.filter(n => n.pdfUrl).map(n => `<button class="btn-nf-pdf" data-nfpage-pdf="${n.pdfUrl}">📄 PDF #${n.number}</button>`).join("")}
+        <button class="btn-nf-pdf" data-nfpage-edit="${j.id}">✏️ Gerenciar NFs</button>
       </div>`;
     container.appendChild(card);
   });
@@ -1185,9 +1259,6 @@ function renderNFPage() {
   });
   container.querySelectorAll("[data-nfpage-edit]").forEach(btn => {
     btn.addEventListener("click", () => openNFModal(btn.dataset.nfpageEdit));
-  });
-  container.querySelectorAll("[data-nfpage-del]").forEach(btn => {
-    btn.addEventListener("click", () => confirmDeleteNF(btn.dataset.nfpageDel));
   });
 }
 
@@ -1409,8 +1480,8 @@ $("repExportExcel").addEventListener("click", () => {
     Pago: paidAmountOf(j),
     Pendente: pendingAmountOf(j),
     Status: statusLabel(j.status),
-    "NF Nº": j.nf?.number || "",
-    "NF Data": j.nf?.date ? fmtDate(j.nf.date) : "",
+    "NF Nº": nfsArray(j).map(n => n.number).join("; "),
+    "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
     Observações: j.notes || ""
   }));
   const ws = XLSX.utils.json_to_sheet(data);
@@ -1532,7 +1603,7 @@ $("exportCSV").addEventListener("click", () => {
   const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Observações"];
   const rows = jobs.map(j => [
     jobDatesArray(j).join("; "), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
-    j.nf?.number || "", j.nf?.date || "", j.notes || ""
+    nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), j.notes || ""
   ]);
   const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   downloadFile(csv, "jobs.csv", "text/csv");
@@ -1548,8 +1619,8 @@ $("exportExcel").addEventListener("click", () => {
     Pago: paidAmountOf(j),
     Pendente: pendingAmountOf(j),
     Status: statusLabel(j.status),
-    "NF Nº": j.nf?.number || "",
-    "NF Data": fmtDate(j.nf?.date),
+    "NF Nº": nfsArray(j).map(n => n.number).join("; "),
+    "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
     Observações: j.notes || ""
   }));
   const ws = XLSX.utils.json_to_sheet(data);

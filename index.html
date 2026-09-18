@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=28" />
+  <link rel="stylesheet" href="css/style.css?v=30" />
 </head>
 <body>
 
@@ -140,6 +140,7 @@
             <option value="pago">🟢 Pago</option>
             <option value="pago_nf">🔵 Pago + NF</option>
             <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
+            <option value="pago_recibo">📃 Pago + Recibo</option>
           </select>
           <button class="btn-outline btn-sm" id="dashFilterBtn">🔍 Filtrar</button>
           <div class="month-nav" id="dashMonthNav">
@@ -239,6 +240,7 @@
           <option value="pago">🟢 Pago</option>
           <option value="pago_nf">🔵 Pago + NF</option>
           <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
+          <option value="pago_recibo">📃 Pago + Recibo</option>
         </select>
         <select id="filterNF">
           <option value="">Com/Sem NF</option>
@@ -579,6 +581,7 @@
             <option value="pago">🟢 Pago</option>
             <option value="pago_nf">🔵 Pago + NF Emitida</option>
             <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
+            <option value="pago_recibo">📃 Pago + Recibo</option>
           </select>
         </div>
         <div class="field" id="payDateField">
@@ -596,6 +599,35 @@
           <label>Valor Pago (R$) *</label>
           <input type="number" id="jobPaidAmount" placeholder="0,00" step="0.01" min="0" />
           <div class="pending-hint" id="pendingHint"></div>
+        </div>
+        <div class="nf-section hidden" id="receiptSection">
+          <label class="nf-section-label">Recibo de Pagamento <span class="field-hint">(opcional)</span></label>
+          <div class="form-grid">
+            <div class="field field-full">
+              <label>Número/Referência do Recibo</label>
+              <input type="text" id="jobReceiptNumber" placeholder="Ex: 0012" />
+            </div>
+            <div class="field field-full">
+              <label>PDF do Recibo</label>
+              <div id="receiptPDFDropzone" class="pdf-dropzone">
+                <input type="file" id="receiptPDFFile" accept="application/pdf" hidden />
+                <div id="receiptPDFEmpty" class="pdf-dropzone-empty">
+                  <span class="pdf-dropzone-icon">📃</span>
+                  <span>Clique para escolher o PDF</span>
+                  <span class="pdf-dropzone-sub">ou arraste o arquivo aqui · máx 5MB</span>
+                </div>
+                <div id="receiptPDFPreview" class="pdf-dropzone-preview hidden">
+                  <span class="pdf-file-icon">📎</span>
+                  <span id="receiptPDFFileName" class="pdf-file-name"></span>
+                  <button type="button" id="receiptPDFRemove" class="pdf-file-remove" title="Remover">✕</button>
+                </div>
+                <div id="receiptPDFProgress" class="pdf-upload-progress hidden">
+                  <div class="pdf-upload-bar"><div id="receiptPDFProgressFill" class="pdf-upload-fill"></div></div>
+                  <span id="receiptPDFProgressText">Enviando...</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -828,9 +860,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=28"></script>
-<script type="module" src="js/app.js?v=28"></script>
-<script type="module" src="js/clients.js?v=28"></script>
+<script type="module" src="js/firebase-config.js?v=30"></script>
+<script type="module" src="js/app.js?v=30"></script>
+<script type="module" src="js/clients.js?v=30"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

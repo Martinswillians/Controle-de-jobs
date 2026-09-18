@@ -32,6 +32,7 @@ import {
 // STATE
 // ─────────────────────────────────────────────
 let currentUser = null;
+let currentUserName = "";
 let allJobs = [];
 let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
@@ -93,7 +94,8 @@ function statusLabel(s) {
     pendente: "🟡 Pendente",
     pago: "🟢 Pago",
     pago_nf: "🔵 Pago + NF",
-    pago_nf_pdf: "🟣 Pago + NF + PDF"
+    pago_nf_pdf: "🟣 Pago + NF + PDF",
+    pago_recibo: "📃 Pago + Recibo"
   };
   return map[s] || s;
 }
@@ -309,6 +311,7 @@ async function loadUserProfile() {
     const snap = await getDoc(doc(db, "users", currentUser.uid));
     if (snap.exists()) {
       const d = snap.data();
+      currentUserName = d.name || "";
       $("userNameDisplay").textContent = d.name?.split(" ")[0] || "";
       $("sidebarName").textContent = d.name || "";
       $("sidebarRole").textContent = d.profession || "";
@@ -325,6 +328,7 @@ $("saveSettings").addEventListener("click", async () => {
   const cnpj = $("settingCNPJ").value.trim();
   try {
     await setDoc(doc(db, "users", currentUser.uid), { name, profession, cnpj }, { merge: true });
+    currentUserName = name;
     $("userNameDisplay").textContent = name.split(" ")[0];
     $("sidebarName").textContent = name;
     $("sidebarRole").textContent = profession;
@@ -347,6 +351,7 @@ function navigateTo(page) {
   else if (page === "nf") renderNFPage();
   else if (page === "reports") renderReports();
   else if (page === "mei") renderMEI();
+  else if (page === "logs") renderLogsPage();
   else if (page === "clients") {} // rendered by clients.js listener
   else if (page === "admin") {} // rendered by access.js
 }
@@ -477,6 +482,7 @@ function renderDashboard() {
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
+          ${j.receipt?.pdfUrl ? `<button class="row-btn" title="Ver Recibo" data-receipt="${j.receipt.pdfUrl}">📃 Recibo</button>` : ""}
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;
@@ -561,6 +567,7 @@ function renderJobsPage() {
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
+          ${j.receipt?.pdfUrl ? `<button class="row-btn" title="Ver Recibo" data-receipt="${j.receipt.pdfUrl}">📃 Recibo</button>` : ""}
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;
@@ -616,6 +623,9 @@ function bindRowActions(tbody) {
   tbody.querySelectorAll("[data-nf]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openNFModal(btn.dataset.nf); });
   });
+  tbody.querySelectorAll("[data-receipt]").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); window.open(btn.dataset.receipt, "_blank"); });
+  });
   tbody.querySelectorAll("[data-del]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openDeleteModal(btn.dataset.del); });
   });
@@ -649,6 +659,9 @@ function openJobModal(jobId = null) {
     $("jobStatus").value = j.status || "pendente";
     $("jobPayDate").value = j.payDate || "";
     $("jobPaidAmount").value = j.paidAmount || "";
+    $("jobReceiptNumber").value = j.receipt?.number || "";
+    resetReceiptDropzone();
+    if (j.receipt?.pdfUrl) showReceiptPDFPreview(j.receipt.pdfName || "PDF anexado", j.receipt.pdfUrl);
   } else {
     jobModalDates = [today()];
     jobModalHours = {};
@@ -662,6 +675,8 @@ function openJobModal(jobId = null) {
     $("jobStatus").value = "pendente";
     $("jobPayDate").value = "";
     $("jobPaidAmount").value = "";
+    $("jobReceiptNumber").value = "";
+    resetReceiptDropzone();
   }
 
   setPricingMode(jobPricingMode);
@@ -771,7 +786,11 @@ $("addJobDateBtn").addEventListener("click", () => {
   recalcJobValue();
 });
 
-function closeJobModal() { $("jobModal").classList.add("hidden"); editingJobId = null; }
+function closeJobModal() {
+  $("jobModal").classList.add("hidden");
+  editingJobId = null;
+  resetReceiptDropzone();
+}
 $("closeJobModal").addEventListener("click", closeJobModal);
 $("cancelJobModal").addEventListener("click", closeJobModal);
 
@@ -780,6 +799,7 @@ function togglePayDateField() {
   const paid = $("jobStatus").value !== "pendente";
   $("payDateField").style.display = paid ? "block" : "none";
   $("paymentTypeField").classList.toggle("hidden", !paid);
+  $("receiptSection").classList.toggle("hidden", $("jobStatus").value !== "pago_recibo");
   if (!paid) {
     $("paidAmountField").classList.add("hidden");
   } else {
@@ -816,6 +836,77 @@ function updatePendingHint() {
   const pending = Math.max(total - paid, 0);
   $("pendingHint").textContent = `Valor pendente: ${fmt(pending)} de ${fmt(total)}`;
 }
+
+// ─────────────────────────────────────────────
+// RECIBO DE PAGAMENTO (dentro do modal de Job)
+// ─────────────────────────────────────────────
+let receiptSelectedFile = null;
+let receiptCurrentPdfUrl = "";
+
+function resetReceiptDropzone() {
+  $("receiptPDFEmpty").classList.remove("hidden");
+  $("receiptPDFPreview").classList.add("hidden");
+  $("receiptPDFProgress").classList.add("hidden");
+  $("receiptPDFFile").value = "";
+  receiptSelectedFile = null;
+  receiptCurrentPdfUrl = "";
+}
+
+function showReceiptPDFPreview(name, url) {
+  $("receiptPDFEmpty").classList.add("hidden");
+  $("receiptPDFProgress").classList.add("hidden");
+  $("receiptPDFPreview").classList.remove("hidden");
+  $("receiptPDFFileName").textContent = name;
+  if (url) receiptCurrentPdfUrl = url;
+}
+
+$("receiptPDFDropzone").addEventListener("click", (e) => {
+  if (e.target.id === "receiptPDFRemove") return;
+  if ($("receiptPDFPreview").classList.contains("hidden")) {
+    $("receiptPDFFile").click();
+  }
+});
+
+$("receiptPDFFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.type !== "application/pdf") {
+    showToast("Apenas arquivos PDF são permitidos.", "error");
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast("O arquivo deve ter no máximo 5MB.", "error");
+    return;
+  }
+  receiptSelectedFile = file;
+  receiptCurrentPdfUrl = "";
+  showReceiptPDFPreview(file.name, null);
+});
+
+$("receiptPDFRemove").addEventListener("click", (e) => {
+  e.stopPropagation();
+  resetReceiptDropzone();
+});
+
+["dragover", "dragleave", "drop"].forEach(evt => {
+  $("receiptPDFDropzone").addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (evt === "dragover") $("receiptPDFDropzone").classList.add("drag-active");
+    if (evt === "dragleave" || evt === "drop") $("receiptPDFDropzone").classList.remove("drag-active");
+    if (evt === "drop" && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (file.type !== "application/pdf") {
+        showToast("Apenas arquivos PDF são permitidos.", "error");
+        return;
+      }
+      receiptSelectedFile = file;
+      receiptCurrentPdfUrl = "";
+      showReceiptPDFPreview(file.name, null);
+    }
+  });
+});
+
 
 $("saveJobBtn").addEventListener("click", async () => {
   const dates = [...new Set(jobModalDates.filter(Boolean))].sort();
@@ -856,6 +947,18 @@ $("saveJobBtn").addEventListener("click", async () => {
 
   loading(true);
   try {
+    let receipt;
+    if (status === "pago_recibo") {
+      let pdfUrl = receiptCurrentPdfUrl;
+      let pdfName = existingJob?.receipt?.pdfName || "";
+      if (receiptSelectedFile) {
+        const result = await uploadPDF(receiptSelectedFile, currentUser.uid, () => {});
+        pdfUrl = result.url;
+        pdfName = receiptSelectedFile.name;
+      }
+      receipt = { number: $("jobReceiptNumber").value.trim(), pdfUrl, pdfName };
+    }
+
     const data = {
       date: dates[0], dates, name, client, value, notes, status,
       payDate: isPaid ? payDate : "",
@@ -866,6 +969,7 @@ $("saveJobBtn").addEventListener("click", async () => {
       paidAmount,
       updatedAt: new Date()
     };
+    if (receipt) data.receipt = receipt;
     if (editingJobId) {
       await updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data);
       showToast("Job atualizado!");
@@ -905,14 +1009,15 @@ function populateClientSuggestions() {
 }
 
 // ─────────────────────────────────────────────
-// DELETE MODAL
+// DELETE MODAL (com log de exclusão)
 // ─────────────────────────────────────────────
 function openDeleteModal(jobId) {
   deletingJobId = jobId;
   $("deleteModal").dataset.mode = "job";
-  $("deleteModal").querySelector(".modal-header h3").textContent = "Excluir Job";
-  $("deleteModal").querySelector(".modal-body p").textContent =
+  $("deleteModalTitle").textContent = "Excluir Job";
+  $("deleteModalText").textContent =
     "Tem certeza que deseja excluir este job? Esta ação não pode ser desfeita.";
+  $("deleteReason").value = "";
   $("deleteModal").classList.remove("hidden");
 }
 function closeDeleteModalFn() {
@@ -923,15 +1028,73 @@ $("closeDeleteModal").addEventListener("click", closeDeleteModalFn);
 $("cancelDelete").addEventListener("click", closeDeleteModalFn);
 $("confirmDelete").addEventListener("click", async () => {
   if (!deletingJobId) return;
+
+  const reason = $("deleteReason").value.trim();
+  if (!reason) return showToast("Informe o motivo da exclusão.", "error");
+
+  const job = allJobs.find(x => x.id === deletingJobId);
+
   loading(true);
   try {
+    // Registra o log ANTES de excluir, para preservar os dados do job excluído
+    await addDoc(collection(db, "users", currentUser.uid, "deleteLogs"), {
+      entityType: "job",
+      jobId: deletingJobId,
+      jobName: job?.name || "",
+      jobClient: job?.client || "",
+      jobValue: job?.value || 0,
+      jobDates: job ? jobDatesArray(job) : [],
+      reason,
+      userEmail: currentUser.email || "",
+      userName: currentUserName || "",
+      deletedAt: new Date()
+    });
+
     await deleteDoc(doc(db, "users", currentUser.uid, "jobs", deletingJobId));
-    showToast("Job excluído.");
+    showToast("Job excluído e registrado no log.");
     closeDeleteModalFn();
   } catch (e) {
+    console.error(e);
     showToast("Erro ao excluir.", "error");
   } finally { loading(false); }
 });
+
+// ─────────────────────────────────────────────
+// LOGS DE EXCLUSÃO
+// ─────────────────────────────────────────────
+async function renderLogsPage() {
+  const tbody = $("logsBody");
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text2)">Carregando...</td></tr>`;
+  $("logsEmpty").classList.add("hidden");
+
+  try {
+    const q = query(collection(db, "users", currentUser.uid, "deleteLogs"), orderBy("deletedAt", "desc"));
+    const snap = await getDocs(q);
+    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    tbody.innerHTML = "";
+    $("logsEmpty").classList.toggle("hidden", logs.length > 0);
+
+    logs.forEach(log => {
+      const dt = log.deletedAt?.toDate?.() || new Date(log.deletedAt || Date.now());
+      const dataHora = `${dt.toLocaleDateString("pt-BR")} ${dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="white-space:nowrap;color:var(--text2);font-size:12px">${dataHora}</td>
+        <td>${log.userName || log.userEmail || "-"}</td>
+        <td>
+          <div class="job-name">${log.jobName || "(sem nome)"}</div>
+          <div class="job-client">${clientDisplayName(log.jobClient) || ""}</div>
+        </td>
+        <td class="job-value">${fmt(log.jobValue || 0)}</td>
+        <td style="font-size:13px">${log.reason || "-"}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error(e);
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text2)">Erro ao carregar logs.</td></tr>`;
+  }
+}
 
 // ─────────────────────────────────────────────
 // NF MODAL (gerencia lista de NFs + pagamento do job)
@@ -1467,14 +1630,14 @@ function renderChartCliente() {
 function renderChartStatus() {
   destroyChart("status");
   const jobs = getReportJobs();
-  const counts = { pendente: 0, pago: 0, pago_nf: 0, pago_nf_pdf: 0 };
+  const counts = { pendente: 0, pago: 0, pago_nf: 0, pago_nf_pdf: 0, pago_recibo: 0 };
   jobs.forEach(j => { if (counts[j.status] !== undefined) counts[j.status]++; });
 
   charts.status = new Chart($("chartStatus"), {
     type: "doughnut",
     data: {
-      labels: ["Pendente", "Pago", "Pago + NF", "Pago + NF + PDF"],
-      datasets: [{ data: Object.values(counts), backgroundColor: ["#f39c12","#2ecc71","#3498db","#9b59b6"], borderWidth: 0 }]
+      labels: ["Pendente", "Pago", "Pago + NF", "Pago + NF + PDF", "Pago + Recibo"],
+      datasets: [{ data: Object.values(counts), backgroundColor: ["#f39c12","#2ecc71","#3498db","#9b59b6","#17a398"], borderWidth: 0 }]
     },
     options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: "bottom", labels: { color: "#9090b0", font: { family: "Space Grotesk" }, padding: 12 } } } }
   });
@@ -1512,6 +1675,7 @@ $("repExportExcel").addEventListener("click", () => {
     Status: statusLabel(j.status),
     "NF Nº": nfsArray(j).map(n => n.number).join("; "),
     "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
+    "Recibo": j.receipt?.number || (j.status === "pago_recibo" ? "Sim" : ""),
     Observações: j.notes || ""
   }));
   const ws = XLSX.utils.json_to_sheet(data);
@@ -1630,10 +1794,10 @@ function updateMEIAlert() {
 // ─────────────────────────────────────────────
 $("exportCSV").addEventListener("click", () => {
   const jobs = getFilteredJobs();
-  const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Observações"];
+  const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
   const rows = jobs.map(j => [
     jobDatesArray(j).join("; "), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
-    nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), j.notes || ""
+    nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), j.receipt?.number || "", j.notes || ""
   ]);
   const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   downloadFile(csv, "jobs.csv", "text/csv");
@@ -1651,6 +1815,7 @@ $("exportExcel").addEventListener("click", () => {
     Status: statusLabel(j.status),
     "NF Nº": nfsArray(j).map(n => n.number).join("; "),
     "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
+    "Recibo": j.receipt?.number || (j.status === "pago_recibo" ? "Sim" : ""),
     Observações: j.notes || ""
   }));
   const ws = XLSX.utils.json_to_sheet(data);

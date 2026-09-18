@@ -50,6 +50,18 @@ const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
 // UTILS
 // ─────────────────────────────────────────────
 const $ = id => document.getElementById(id);
+
+// Registra um listener com segurança: se o elemento não existir na página (ex: divergência
+// entre versões de index.html/app.js em cache), avisa no console em vez de derrubar todo o
+// script — um único elemento faltando não pode mais quebrar o app inteiro.
+function on(id, event, handler) {
+  const el = document.getElementById(id);
+  if (!el) {
+    console.warn(`[Controle de Job] Elemento #${id} não encontrado — evento "${event}" não registrado. Tente recarregar a página (Ctrl+Shift+R).`);
+    return;
+  }
+  el.addEventListener(event, handler);
+}
 const fmt = v => `R$ ${Number(v).toLocaleString("pt-BR", {minimumFractionDigits:2})}`;
 const fmtDate = d => d ? d.split("-").reverse().join("/") : "-";
 const today = () => new Date().toISOString().split("T")[0];
@@ -168,7 +180,7 @@ function valueCellHtml(j) {
 // ─────────────────────────────────────────────
 // AUTH
 // ─────────────────────────────────────────────
-$("loginBtn").addEventListener("click", async () => {
+on("loginBtn", "click", async () => {
   const email = $("loginEmail").value.trim();
   const pass = $("loginPassword").value;
   if (!email || !pass) return showMsg("Preencha e-mail e senha.", "error");
@@ -180,7 +192,7 @@ $("loginBtn").addEventListener("click", async () => {
   } finally { loading(false); }
 });
 
-$("registerBtn").addEventListener("click", async () => {
+on("registerBtn", "click", async () => {
   const name = $("regName").value.trim();
   const email = $("regEmail").value.trim();
   const pass = $("regPassword").value;
@@ -197,7 +209,7 @@ $("registerBtn").addEventListener("click", async () => {
   } finally { loading(false); }
 });
 
-$("forgotPassword").addEventListener("click", async e => {
+on("forgotPassword", "click", async e => {
   e.preventDefault();
   const email = $("loginEmail").value.trim();
   if (!email) return showMsg("Digite seu e-mail acima primeiro.", "error");
@@ -322,7 +334,7 @@ async function loadUserProfile() {
   } catch (e) { console.error(e); }
 }
 
-$("saveSettings").addEventListener("click", async () => {
+on("saveSettings", "click", async () => {
   const name = $("settingName").value.trim();
   const profession = $("settingProfession").value;
   const cnpj = $("settingCNPJ").value.trim();
@@ -361,11 +373,11 @@ document.querySelectorAll(".nav-link").forEach(link => {
 });
 
 // Sidebar mobile
-$("menuToggle").addEventListener("click", () => {
+on("menuToggle", "click", () => {
   $("sidebar").classList.toggle("open");
   $("sidebarOverlay").classList.toggle("active");
 });
-$("sidebarOverlay").addEventListener("click", closeSidebar);
+on("sidebarOverlay", "click", closeSidebar);
 function closeSidebar() {
   $("sidebar").classList.remove("open");
   $("sidebarOverlay").classList.remove("active");
@@ -377,13 +389,13 @@ function closeSidebar() {
 function updateMonthLabel() {
   $("currentMonthLabel").textContent = `${MONTHS_PT[currentMonth]} ${currentYear}`;
 }
-$("prevMonth").addEventListener("click", () => {
+on("prevMonth", "click", () => {
   currentMonth--;
   if (currentMonth < 0) { currentMonth = 11; currentYear--; }
   updateMonthLabel();
   renderDashboard();
 });
-$("nextMonth").addEventListener("click", () => {
+on("nextMonth", "click", () => {
   currentMonth++;
   if (currentMonth > 11) { currentMonth = 0; currentYear++; }
   updateMonthLabel();
@@ -506,17 +518,17 @@ document.querySelectorAll(".dash-view-btn").forEach(btn => {
 });
 
 // Filtro de status no Dashboard
-$("dashStatusFilter").addEventListener("change", (e) => {
+on("dashStatusFilter", "change", (e) => {
   dashStatus = e.target.value;
   renderDashboard();
 });
 
 // Navegação de ano (quando na visão Ano)
-$("prevYear").addEventListener("click", () => { currentYear--; renderDashboard(); });
-$("nextYear").addEventListener("click", () => { currentYear++; renderDashboard(); });
+on("prevYear", "click", () => { currentYear--; renderDashboard(); });
+on("nextYear", "click", () => { currentYear++; renderDashboard(); });
 
 // Botão Filtrar — vai para Jobs com o período + status atuais do dashboard já aplicados
-$("dashFilterBtn").addEventListener("click", () => {
+on("dashFilterBtn", "click", () => {
   navigateTo("jobs");
   populateFilterMonths();
   if (dashView === "month") {
@@ -605,7 +617,7 @@ function populateFilterMonths() {
 [$("filterMonth"), $("filterClient"), $("filterStatus"), $("filterNF")].forEach(sel => {
   sel?.addEventListener("change", renderJobsPage);
 });
-$("clearFilters").addEventListener("click", () => {
+on("clearFilters", "click", () => {
   $("filterMonth").value = "";
   $("filterClient").value = "";
   $("filterStatus").value = "";
@@ -706,8 +718,8 @@ $("pricingModeToggle").querySelectorAll(".mode-btn").forEach(btn => {
   btn.addEventListener("click", () => setPricingMode(btn.dataset.mode));
 });
 
-$("jobRate").addEventListener("input", recalcJobValue);
-$("jobValue").addEventListener("input", updatePendingHint);
+on("jobRate", "input", recalcJobValue);
+on("jobValue", "input", updatePendingHint);
 
 function recalcJobValue() {
   if (jobPricingMode === "fixo") { updatePendingHint(); return; }
@@ -773,7 +785,7 @@ function renderJobDateRows() {
   });
 }
 
-$("addJobDateBtn").addEventListener("click", () => {
+on("addJobDateBtn", "click", () => {
   const last = jobModalDates[jobModalDates.length - 1];
   let next = today();
   if (last) {
@@ -791,10 +803,10 @@ function closeJobModal() {
   editingJobId = null;
   resetReceiptDropzone();
 }
-$("closeJobModal").addEventListener("click", closeJobModal);
-$("cancelJobModal").addEventListener("click", closeJobModal);
+on("closeJobModal", "click", closeJobModal);
+on("cancelJobModal", "click", closeJobModal);
 
-$("jobStatus").addEventListener("change", togglePayDateField);
+on("jobStatus", "change", togglePayDateField);
 function togglePayDateField() {
   const paid = $("jobStatus").value !== "pendente";
   $("payDateField").style.display = paid ? "block" : "none";
@@ -824,7 +836,7 @@ $("paymentTypeToggle").querySelectorAll(".mode-btn").forEach(btn => {
   btn.addEventListener("click", () => setPaymentType(btn.dataset.ptype));
 });
 
-$("jobPaidAmount").addEventListener("input", updatePendingHint);
+on("jobPaidAmount", "input", updatePendingHint);
 
 function updatePendingHint() {
   if (jobPaymentType !== "parcial" || $("jobStatus").value === "pendente") {
@@ -860,14 +872,14 @@ function showReceiptPDFPreview(name, url) {
   if (url) receiptCurrentPdfUrl = url;
 }
 
-$("receiptPDFDropzone").addEventListener("click", (e) => {
+on("receiptPDFDropzone", "click", (e) => {
   if (e.target.id === "receiptPDFRemove") return;
   if ($("receiptPDFPreview").classList.contains("hidden")) {
     $("receiptPDFFile").click();
   }
 });
 
-$("receiptPDFFile").addEventListener("change", (e) => {
+on("receiptPDFFile", "change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
   if (file.type !== "application/pdf") {
@@ -883,13 +895,13 @@ $("receiptPDFFile").addEventListener("change", (e) => {
   showReceiptPDFPreview(file.name, null);
 });
 
-$("receiptPDFRemove").addEventListener("click", (e) => {
+on("receiptPDFRemove", "click", (e) => {
   e.stopPropagation();
   resetReceiptDropzone();
 });
 
 ["dragover", "dragleave", "drop"].forEach(evt => {
-  $("receiptPDFDropzone").addEventListener(evt, (e) => {
+  on("receiptPDFDropzone", evt, (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (evt === "dragover") $("receiptPDFDropzone").classList.add("drag-active");
@@ -908,7 +920,7 @@ $("receiptPDFRemove").addEventListener("click", (e) => {
 });
 
 
-$("saveJobBtn").addEventListener("click", async () => {
+on("saveJobBtn", "click", async () => {
   const dates = [...new Set(jobModalDates.filter(Boolean))].sort();
   const name = $("jobName").value.trim();
   const client = $("jobClient").value.trim();
@@ -1024,9 +1036,9 @@ function closeDeleteModalFn() {
   $("deleteModal").classList.add("hidden");
   deletingJobId = null;
 }
-$("closeDeleteModal").addEventListener("click", closeDeleteModalFn);
-$("cancelDelete").addEventListener("click", closeDeleteModalFn);
-$("confirmDelete").addEventListener("click", async () => {
+on("closeDeleteModal", "click", closeDeleteModalFn);
+on("cancelDelete", "click", closeDeleteModalFn);
+on("confirmDelete", "click", async () => {
   if (!deletingJobId) return;
 
   const reason = $("deleteReason").value.trim();
@@ -1136,8 +1148,8 @@ function closeNFModal() {
   nfModalList = [];
   nfEditingIndex = null;
 }
-$("closeNFModal").addEventListener("click", closeNFModal);
-$("cancelNFModal").addEventListener("click", closeNFModal);
+on("closeNFModal", "click", closeNFModal);
+on("cancelNFModal", "click", closeNFModal);
 
 // ─────────────────────────────────────────────
 // SITUAÇÃO DE PAGAMENTO (dentro do modal de NF)
@@ -1153,7 +1165,7 @@ function setNFPaymentType(type) {
 $("nfPaymentTypeToggle").querySelectorAll(".mode-btn").forEach(btn => {
   btn.addEventListener("click", () => setNFPaymentType(btn.dataset.ptype));
 });
-$("nfPaidAmount").addEventListener("input", updateNFPendingHint);
+on("nfPaidAmount", "input", updateNFPendingHint);
 
 function updateNFPendingHint() {
   if (nfPaymentType !== "parcial") { $("nfPendingHint").textContent = ""; return; }
@@ -1241,9 +1253,9 @@ function loadNFIntoForm(i) {
   $("nfAddToListBtn").textContent = "💾 Atualizar NF";
 }
 
-$("nfCancelEditBtn").addEventListener("click", resetNFForm);
+on("nfCancelEditBtn", "click", resetNFForm);
 
-$("nfAddToListBtn").addEventListener("click", () => {
+on("nfAddToListBtn", "click", () => {
   try {
     const number = $("nfNumber").value.trim();
     if (!number) return showToast("Informe o número da NF.", "error");
@@ -1296,14 +1308,14 @@ function showPDFPreview(name, url) {
   $("nfPDFPreview").dataset.url = url || "";
 }
 
-$("nfPDFDropzone").addEventListener("click", (e) => {
+on("nfPDFDropzone", "click", (e) => {
   if (e.target.id === "nfPDFRemove") return;
   if ($("nfPDFPreview").classList.contains("hidden")) {
     $("nfPDFFile").click();
   }
 });
 
-$("nfPDFFile").addEventListener("change", (e) => {
+on("nfPDFFile", "change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
   if (file.type !== "application/pdf") {
@@ -1319,7 +1331,7 @@ $("nfPDFFile").addEventListener("change", (e) => {
   showPDFPreview(file.name, null);
 });
 
-$("nfPDFRemove").addEventListener("click", (e) => {
+on("nfPDFRemove", "click", (e) => {
   e.stopPropagation();
   selectedPDFFile = null;
   currentPdfUrl = "";
@@ -1328,7 +1340,7 @@ $("nfPDFRemove").addEventListener("click", (e) => {
 
 // Drag and drop
 ["dragover", "dragleave", "drop"].forEach(evt => {
-  $("nfPDFDropzone").addEventListener(evt, (e) => {
+  on("nfPDFDropzone", evt, (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (evt === "dragover") $("nfPDFDropzone").classList.add("drag-active");
@@ -1349,7 +1361,7 @@ $("nfPDFRemove").addEventListener("click", (e) => {
 // ─────────────────────────────────────────────
 // SALVAR (NFs + situação de pagamento) — tudo em um só update
 // ─────────────────────────────────────────────
-$("saveNFBtn").addEventListener("click", async () => {
+on("saveNFBtn", "click", async () => {
   if (!nfTargetJobId) return;
   const j = allJobs.find(x => x.id === nfTargetJobId);
   if (!j) return;
@@ -1502,7 +1514,7 @@ function reportPeriodLabel() {
   return `${MONTHS_PT[parseInt(m)-1]} ${y}`;
 }
 
-$("repPeriodSelect").addEventListener("change", (e) => {
+on("repPeriodSelect", "change", (e) => {
   repPeriod = e.target.value;
   renderReports();
 });
@@ -1663,7 +1675,7 @@ function renderTopClientes() {
 // ─────────────────────────────────────────────
 // REPORTS EXPORT (Excel / PDF)
 // ─────────────────────────────────────────────
-$("repExportExcel").addEventListener("click", () => {
+on("repExportExcel", "click", () => {
   const jobs = getReportJobs();
   const data = jobs.map(j => ({
     Data: fmtJobDatesPlain(j),
@@ -1685,7 +1697,7 @@ $("repExportExcel").addEventListener("click", () => {
   XLSX.writeFile(wb, `relatorio-${label}.xlsx`);
 });
 
-$("repExportPDF").addEventListener("click", () => {
+on("repExportPDF", "click", () => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   doc.setFontSize(16);
@@ -1792,7 +1804,7 @@ function updateMEIAlert() {
 // ─────────────────────────────────────────────
 // EXPORTS
 // ─────────────────────────────────────────────
-$("exportCSV").addEventListener("click", () => {
+on("exportCSV", "click", () => {
   const jobs = getFilteredJobs();
   const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
   const rows = jobs.map(j => [
@@ -1803,7 +1815,7 @@ $("exportCSV").addEventListener("click", () => {
   downloadFile(csv, "jobs.csv", "text/csv");
 });
 
-$("exportExcel").addEventListener("click", () => {
+on("exportExcel", "click", () => {
   const jobs = getFilteredJobs();
   const data = jobs.map(j => ({
     Data: fmtJobDatesPlain(j),
@@ -1824,7 +1836,7 @@ $("exportExcel").addEventListener("click", () => {
   XLSX.writeFile(wb, "controle-jobs.xlsx");
 });
 
-$("exportPDF").addEventListener("click", () => {
+on("exportPDF", "click", () => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   doc.setFontSize(16);

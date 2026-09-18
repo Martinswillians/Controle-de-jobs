@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=27" />
+  <link rel="stylesheet" href="css/style.css?v=28" />
 </head>
 <body>
 
@@ -113,6 +113,7 @@
       <li><a href="#" class="nav-link" data-page="reports">📈 Relatórios</a></li>
       <li><a href="#" class="nav-link" data-page="clients">🏢 Clientes</a></li>
       <li><a href="#" class="nav-link" data-page="mei">⚠️ Limite MEI</a></li>
+      <li><a href="#" class="nav-link" data-page="logs">🗒️ Logs</a></li>
       <li><a href="#" class="nav-link" data-page="settings">⚙️ Configurações</a></li>
     </ul>
     <div class="sidebar-footer">
@@ -455,6 +456,31 @@
       <!-- Preenchido dinamicamente pelo access.js -->
     </div>
 
+    <!-- ─── LOGS ─── -->
+    <div id="page-logs" class="page">
+      <div class="page-header">
+        <h2>Logs de Exclusão</h2>
+      </div>
+      <div class="table-wrap">
+        <table class="jobs-table" id="logsTable">
+          <thead>
+            <tr>
+              <th>Data/Hora</th>
+              <th>Usuário</th>
+              <th>Job</th>
+              <th>Valor</th>
+              <th>Motivo</th>
+            </tr>
+          </thead>
+          <tbody id="logsBody"></tbody>
+        </table>
+      </div>
+      <div id="logsEmpty" class="empty-state hidden">
+        <span>🗒️</span>
+        <p>Nenhuma exclusão registrada ainda.</p>
+      </div>
+    </div>
+
     <!-- ─── SETTINGS ─── -->
     <div id="page-settings" class="page">
       <div class="page-header">
@@ -776,11 +802,15 @@
 <div id="deleteModal" class="modal-overlay hidden">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <h3>Excluir Job</h3>
+      <h3 id="deleteModalTitle">Excluir Job</h3>
       <button class="modal-close" id="closeDeleteModal">✕</button>
     </div>
     <div class="modal-body">
-      <p>Tem certeza que deseja excluir este job? Esta ação não pode ser desfeita.</p>
+      <p id="deleteModalText">Tem certeza que deseja excluir este job? Esta ação não pode ser desfeita.</p>
+      <div class="field field-full" style="margin-top:14px">
+        <label>Motivo da Exclusão *</label>
+        <textarea id="deleteReason" rows="3" placeholder="Ex: Job duplicado, cancelado pelo cliente, erro de cadastro..."></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn-outline" id="cancelDelete">Cancelar</button>
@@ -798,9 +828,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=27"></script>
-<script type="module" src="js/app.js?v=27"></script>
-<script type="module" src="js/clients.js?v=27"></script>
+<script type="module" src="js/firebase-config.js?v=28"></script>
+<script type="module" src="js/app.js?v=28"></script>
+<script type="module" src="js/clients.js?v=28"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

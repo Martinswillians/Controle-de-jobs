@@ -26,6 +26,8 @@
   --blue-dim: rgba(52,152,219,0.15);
   --purple: #9b59b6;
   --purple-dim: rgba(155,89,182,0.15);
+  --teal: #17a398;
+  --teal-dim: rgba(23,163,152,0.15);
   --red: #e74c3c;
   --red-dim: rgba(231,76,60,0.15);
 
@@ -608,6 +610,7 @@ a:hover { color: var(--accent-light); }
 .badge-pago { background: var(--green-dim); color: var(--green); }
 .badge-pago_nf { background: var(--blue-dim); color: var(--blue); }
 .badge-pago_nf_pdf { background: var(--purple-dim); color: var(--purple); }
+.badge-pago_recibo { background: var(--teal-dim); color: var(--teal); }
 
 /* Row actions */
 .row-actions { display: flex; gap: 5px; opacity: 1; flex-wrap: wrap; }

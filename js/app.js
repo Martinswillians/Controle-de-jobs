@@ -130,6 +130,13 @@ function nfsArray(j) {
   return [];
 }
 
+// Lista de Recibos do job (suporta jobs antigos com "receipt" único)
+function receiptsArray(j) {
+  if (Array.isArray(j.receipts)) return j.receipts;
+  if (j.receipt?.pdfUrl || j.receipt?.number) return [j.receipt];
+  return [];
+}
+
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -494,7 +501,7 @@ function renderDashboard() {
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
-          ${j.receipt?.pdfUrl ? `<button class="row-btn" title="Ver Recibo" data-receipt="${j.receipt.pdfUrl}">📃 Recibo</button>` : ""}
+          <button class="row-btn" title="Recibos" data-receipt-manage="${j.id}">📃 Recibo${receiptsArray(j).length ? ` (${receiptsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;
@@ -579,7 +586,7 @@ function renderJobsPage() {
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
-          ${j.receipt?.pdfUrl ? `<button class="row-btn" title="Ver Recibo" data-receipt="${j.receipt.pdfUrl}">📃 Recibo</button>` : ""}
+          <button class="row-btn" title="Recibos" data-receipt-manage="${j.id}">📃 Recibo${receiptsArray(j).length ? ` (${receiptsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
         </div>
       </td>`;
@@ -635,8 +642,8 @@ function bindRowActions(tbody) {
   tbody.querySelectorAll("[data-nf]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openNFModal(btn.dataset.nf); });
   });
-  tbody.querySelectorAll("[data-receipt]").forEach(btn => {
-    btn.addEventListener("click", e => { e.stopPropagation(); window.open(btn.dataset.receipt, "_blank"); });
+  tbody.querySelectorAll("[data-receipt-manage]").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); openReceiptModal(btn.dataset.receiptManage); });
   });
   tbody.querySelectorAll("[data-del]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openDeleteModal(btn.dataset.del); });
@@ -671,9 +678,6 @@ function openJobModal(jobId = null) {
     $("jobStatus").value = j.status || "pendente";
     $("jobPayDate").value = j.payDate || "";
     $("jobPaidAmount").value = j.paidAmount || "";
-    $("jobReceiptNumber").value = j.receipt?.number || "";
-    resetReceiptDropzone();
-    if (j.receipt?.pdfUrl) showReceiptPDFPreview(j.receipt.pdfName || "PDF anexado", j.receipt.pdfUrl);
   } else {
     jobModalDates = [today()];
     jobModalHours = {};
@@ -687,8 +691,6 @@ function openJobModal(jobId = null) {
     $("jobStatus").value = "pendente";
     $("jobPayDate").value = "";
     $("jobPaidAmount").value = "";
-    $("jobReceiptNumber").value = "";
-    resetReceiptDropzone();
   }
 
   setPricingMode(jobPricingMode);
@@ -811,7 +813,6 @@ function togglePayDateField() {
   const paid = $("jobStatus").value !== "pendente";
   $("payDateField").style.display = paid ? "block" : "none";
   $("paymentTypeField").classList.toggle("hidden", !paid);
-  $("receiptSection").classList.toggle("hidden", $("jobStatus").value !== "pago_recibo");
   if (!paid) {
     $("paidAmountField").classList.add("hidden");
   } else {
@@ -849,77 +850,6 @@ function updatePendingHint() {
   $("pendingHint").textContent = `Valor pendente: ${fmt(pending)} de ${fmt(total)}`;
 }
 
-// ─────────────────────────────────────────────
-// RECIBO DE PAGAMENTO (dentro do modal de Job)
-// ─────────────────────────────────────────────
-let receiptSelectedFile = null;
-let receiptCurrentPdfUrl = "";
-
-function resetReceiptDropzone() {
-  $("receiptPDFEmpty").classList.remove("hidden");
-  $("receiptPDFPreview").classList.add("hidden");
-  $("receiptPDFProgress").classList.add("hidden");
-  $("receiptPDFFile").value = "";
-  receiptSelectedFile = null;
-  receiptCurrentPdfUrl = "";
-}
-
-function showReceiptPDFPreview(name, url) {
-  $("receiptPDFEmpty").classList.add("hidden");
-  $("receiptPDFProgress").classList.add("hidden");
-  $("receiptPDFPreview").classList.remove("hidden");
-  $("receiptPDFFileName").textContent = name;
-  if (url) receiptCurrentPdfUrl = url;
-}
-
-on("receiptPDFDropzone", "click", (e) => {
-  if (e.target.id === "receiptPDFRemove") return;
-  if ($("receiptPDFPreview").classList.contains("hidden")) {
-    $("receiptPDFFile").click();
-  }
-});
-
-on("receiptPDFFile", "change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.type !== "application/pdf") {
-    showToast("Apenas arquivos PDF são permitidos.", "error");
-    return;
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    showToast("O arquivo deve ter no máximo 5MB.", "error");
-    return;
-  }
-  receiptSelectedFile = file;
-  receiptCurrentPdfUrl = "";
-  showReceiptPDFPreview(file.name, null);
-});
-
-on("receiptPDFRemove", "click", (e) => {
-  e.stopPropagation();
-  resetReceiptDropzone();
-});
-
-["dragover", "dragleave", "drop"].forEach(evt => {
-  on("receiptPDFDropzone", evt, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (evt === "dragover") $("receiptPDFDropzone").classList.add("drag-active");
-    if (evt === "dragleave" || evt === "drop") $("receiptPDFDropzone").classList.remove("drag-active");
-    if (evt === "drop" && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      if (file.type !== "application/pdf") {
-        showToast("Apenas arquivos PDF são permitidos.", "error");
-        return;
-      }
-      receiptSelectedFile = file;
-      receiptCurrentPdfUrl = "";
-      showReceiptPDFPreview(file.name, null);
-    }
-  });
-});
-
-
 on("saveJobBtn", "click", async () => {
   const dates = [...new Set(jobModalDates.filter(Boolean))].sort();
   const name = $("jobName").value.trim();
@@ -945,6 +875,10 @@ on("saveJobBtn", "click", async () => {
   if (existingNFCount > 0 && status !== "pago_nf" && status !== "pago_nf_pdf") {
     return showToast("Este job tem Notas Fiscais emitidas. Gerencie/remova as NFs pelo botão 🧾 NF antes de mudar o status.", "error");
   }
+  const existingReceiptsCount = existingJob ? receiptsArray(existingJob).length : 0;
+  if (existingReceiptsCount > 0 && status !== "pago_recibo") {
+    return showToast("Este job tem Recibos cadastrados. Gerencie/remova os recibos pelo botão 📃 Recibo antes de mudar o status.", "error");
+  }
 
   const isPaid = status !== "pendente";
   const paymentType = isPaid && jobPaymentType === "parcial" ? "parcial" : "total";
@@ -959,18 +893,6 @@ on("saveJobBtn", "click", async () => {
 
   loading(true);
   try {
-    let receipt;
-    if (status === "pago_recibo") {
-      let pdfUrl = receiptCurrentPdfUrl;
-      let pdfName = existingJob?.receipt?.pdfName || "";
-      if (receiptSelectedFile) {
-        const result = await uploadPDF(receiptSelectedFile, currentUser.uid, () => {});
-        pdfUrl = result.url;
-        pdfName = receiptSelectedFile.name;
-      }
-      receipt = { number: $("jobReceiptNumber").value.trim(), pdfUrl, pdfName };
-    }
-
     const data = {
       date: dates[0], dates, name, client, value, notes, status,
       payDate: isPaid ? payDate : "",
@@ -981,7 +903,6 @@ on("saveJobBtn", "click", async () => {
       paidAmount,
       updatedAt: new Date()
     };
-    if (receipt) data.receipt = receipt;
     if (editingJobId) {
       await updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data);
       showToast("Job atualizado!");
@@ -1426,6 +1347,314 @@ on("saveNFBtn", "click", async () => {
 });
 
 // ─────────────────────────────────────────────
+// RECEIPT MODAL (gerencia lista de Recibos + pagamento do job)
+// ─────────────────────────────────────────────
+let receiptTargetJobId = null;
+let receiptSelectedFile = null;
+let receiptCurrentPdfUrl = "";
+let receiptModalList = [];      // Recibos do job (cópia de trabalho local)
+let receiptEditingIndex = null; // índice em edição no formulário, ou null = adicionando novo
+let receiptPaymentType = "total";
+
+function openReceiptModal(jobId) {
+  receiptTargetJobId = jobId;
+  receiptSelectedFile = null;
+  receiptEditingIndex = null;
+  const j = allJobs.find(x => x.id === jobId);
+  if (!j) return;
+
+  receiptModalList = receiptsArray(j).map(r => ({ ...r, id: r.id || genId() }));
+  receiptPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
+
+  $("receiptJobInfo").innerHTML = `
+    <strong>${j.name}</strong> — ${clientDisplayName(j.client)}<br>
+    <span style="color:var(--text2)">Valor: ${valueInlineText(j)} | Data: ${fmtJobDates(j)}</span>`;
+
+  $("receiptPaidAmount").value = j.paidAmount || "";
+  setReceiptPaymentType(receiptPaymentType);
+
+  resetReceiptForm();
+  renderReceiptList();
+
+  $("receiptModal").classList.remove("hidden");
+}
+
+function closeReceiptModal() {
+  $("receiptModal").classList.add("hidden");
+  receiptTargetJobId = null;
+  receiptSelectedFile = null;
+  receiptCurrentPdfUrl = "";
+  receiptModalList = [];
+  receiptEditingIndex = null;
+}
+on("closeReceiptModal", "click", closeReceiptModal);
+on("cancelReceiptModal", "click", closeReceiptModal);
+
+// ─────────────────────────────────────────────
+// SITUAÇÃO DE PAGAMENTO (dentro do modal de Recibo)
+// ─────────────────────────────────────────────
+function setReceiptPaymentType(type) {
+  receiptPaymentType = type;
+  $("receiptPaymentTypeToggle").querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.ptype === type);
+  });
+  $("receiptPaidAmountField").classList.toggle("hidden", type !== "parcial");
+  updateReceiptPendingHint();
+}
+$("receiptPaymentTypeToggle").querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => setReceiptPaymentType(btn.dataset.ptype));
+});
+on("receiptPaidAmount", "input", updateReceiptPendingHint);
+
+function updateReceiptPendingHint() {
+  if (receiptPaymentType !== "parcial") { $("receiptPendingHint").textContent = ""; return; }
+  const j = allJobs.find(x => x.id === receiptTargetJobId);
+  const total = Number(j?.value || 0);
+  const paid = parseFloat($("receiptPaidAmount").value) || 0;
+  const pending = Math.max(total - paid, 0);
+  $("receiptPendingHint").textContent = `Valor pendente: ${fmt(pending)} de ${fmt(total)}`;
+}
+
+// ─────────────────────────────────────────────
+// LISTA DE RECIBOS (adicionar / editar / remover)
+// ─────────────────────────────────────────────
+function renderReceiptList() {
+  const box = $("receiptExistingList");
+  $("receiptListSectionLabel").textContent = `Recibos Cadastrados${receiptModalList.length ? ` (${receiptModalList.length})` : ""}`;
+  if (!receiptModalList.length) {
+    box.innerHTML = `<div class="nf-list-empty">Nenhum recibo cadastrado ainda.</div>`;
+    return;
+  }
+  box.innerHTML = receiptModalList.map((r, i) => `
+    <div class="nf-list-item">
+      <div class="nf-list-item-info">
+        <span class="nf-number">${r.number ? `Recibo #${r.number}` : "Recibo (sem número)"}</span>
+        <div class="nf-list-item-meta">
+          ${r.pdfUrl || r._file ? `<span>📎 PDF</span>` : ""}
+        </div>
+      </div>
+      <div class="nf-list-item-actions">
+        ${r.pdfUrl ? `<button type="button" data-recpdf="${i}" title="Ver PDF">📄</button>` : ""}
+        <button type="button" data-recedit="${i}" title="Editar">✏️</button>
+        <button type="button" class="danger" data-recremove="${i}" title="Remover">🗑️</button>
+      </div>
+    </div>`).join("");
+
+  box.querySelectorAll("[data-recpdf]").forEach(btn => {
+    btn.addEventListener("click", () => window.open(receiptModalList[+btn.dataset.recpdf].pdfUrl, "_blank"));
+  });
+  box.querySelectorAll("[data-recedit]").forEach(btn => {
+    btn.addEventListener("click", () => loadReceiptIntoForm(+btn.dataset.recedit));
+  });
+  box.querySelectorAll("[data-recremove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const i = +btn.dataset.recremove;
+      receiptModalList.splice(i, 1);
+      if (receiptEditingIndex === i) resetReceiptForm();
+      renderReceiptList();
+    });
+  });
+}
+
+function resetReceiptForm() {
+  receiptEditingIndex = null;
+  $("receiptFormTitle").textContent = "+ Novo Recibo";
+  $("receiptNumber").value = "";
+  resetReceiptDropzone();
+  $("receiptCancelEditBtn").classList.add("hidden");
+  $("receiptAddToListBtn").textContent = "+ Adicionar à lista";
+}
+
+function loadReceiptIntoForm(i) {
+  const r = receiptModalList[i];
+  if (!r) return;
+  receiptEditingIndex = i;
+  $("receiptFormTitle").textContent = `Editando Recibo${r.number ? ` #${r.number}` : ""}`;
+  $("receiptNumber").value = r.number || "";
+  receiptCurrentPdfUrl = r.pdfUrl || "";
+  receiptSelectedFile = r._file || null;
+  resetPDFDropzoneVisualOnly();
+  if (receiptSelectedFile) showReceiptPDFPreview(receiptSelectedFile.name, null);
+  else if (receiptCurrentPdfUrl) showReceiptPDFPreview(r.pdfName || "PDF anexado", receiptCurrentPdfUrl);
+  $("receiptCancelEditBtn").classList.remove("hidden");
+  $("receiptAddToListBtn").textContent = "💾 Atualizar Recibo";
+}
+on("receiptCancelEditBtn", "click", resetReceiptForm);
+
+on("receiptAddToListBtn", "click", () => {
+  try {
+    const number = $("receiptNumber").value.trim();
+    const hasPdf = !!(receiptSelectedFile || receiptCurrentPdfUrl);
+    if (!number && !hasPdf) return showToast("Informe o número do recibo ou anexe um PDF.", "error");
+
+    const isEditing = receiptEditingIndex !== null && receiptModalList[receiptEditingIndex] != null;
+
+    const entry = {
+      id: isEditing ? receiptModalList[receiptEditingIndex].id : genId(),
+      number,
+      pdfUrl: receiptCurrentPdfUrl,
+      pdfName: isEditing ? (receiptModalList[receiptEditingIndex].pdfName || "") : "",
+      _file: receiptSelectedFile || null
+    };
+    if (receiptSelectedFile) entry.pdfName = receiptSelectedFile.name;
+
+    if (isEditing) {
+      receiptModalList[receiptEditingIndex] = entry;
+      showToast(`Recibo${number ? " #" + number : ""} atualizado na lista.`);
+    } else {
+      receiptModalList.push(entry);
+      showToast(`Recibo adicionado (${receiptModalList.length} na lista). Adicione outro ou clique em Salvar Alterações.`);
+    }
+
+    resetReceiptForm();
+    renderReceiptList();
+  } catch (e) {
+    console.error("Erro ao adicionar recibo à lista:", e);
+    showToast("Erro ao adicionar recibo. Tente novamente.", "error");
+  }
+});
+
+// ─────────────────────────────────────────────
+// PDF DROPZONE UI (Recibo)
+// ─────────────────────────────────────────────
+function resetPDFDropzoneVisualOnly() {
+  $("receiptPDFEmpty").classList.remove("hidden");
+  $("receiptPDFPreview").classList.add("hidden");
+  $("receiptPDFProgress").classList.add("hidden");
+  $("receiptPDFFile").value = "";
+}
+
+function resetReceiptDropzone() {
+  resetPDFDropzoneVisualOnly();
+  receiptSelectedFile = null;
+  receiptCurrentPdfUrl = "";
+}
+
+function showReceiptPDFPreview(name, url) {
+  $("receiptPDFEmpty").classList.add("hidden");
+  $("receiptPDFProgress").classList.add("hidden");
+  $("receiptPDFPreview").classList.remove("hidden");
+  $("receiptPDFFileName").textContent = name;
+  if (url) receiptCurrentPdfUrl = url;
+}
+
+on("receiptPDFDropzone", "click", (e) => {
+  if (e.target.id === "receiptPDFRemove") return;
+  if ($("receiptPDFPreview").classList.contains("hidden")) {
+    $("receiptPDFFile").click();
+  }
+});
+
+on("receiptPDFFile", "change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.type !== "application/pdf") {
+    showToast("Apenas arquivos PDF são permitidos.", "error");
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast("O arquivo deve ter no máximo 5MB.", "error");
+    return;
+  }
+  receiptSelectedFile = file;
+  receiptCurrentPdfUrl = "";
+  showReceiptPDFPreview(file.name, null);
+});
+
+on("receiptPDFRemove", "click", (e) => {
+  e.stopPropagation();
+  resetReceiptDropzone();
+});
+
+["dragover", "dragleave", "drop"].forEach(evt => {
+  on("receiptPDFDropzone", evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (evt === "dragover") $("receiptPDFDropzone").classList.add("drag-active");
+    if (evt === "dragleave" || evt === "drop") $("receiptPDFDropzone").classList.remove("drag-active");
+    if (evt === "drop" && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      if (file.type !== "application/pdf") {
+        showToast("Apenas arquivos PDF são permitidos.", "error");
+        return;
+      }
+      receiptSelectedFile = file;
+      receiptCurrentPdfUrl = "";
+      showReceiptPDFPreview(file.name, null);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────
+// SALVAR (Recibos + situação de pagamento) — tudo em um só update
+// ─────────────────────────────────────────────
+on("saveReceiptBtn", "click", async () => {
+  if (!receiptTargetJobId) return;
+  const j = allJobs.find(x => x.id === receiptTargetJobId);
+  if (!j) return;
+
+  // Se o formulário tem algo preenchido e não foi adicionado à lista, adiciona automaticamente
+  const pendingNumber = $("receiptNumber").value.trim();
+  const pendingHasPdf = !!(receiptSelectedFile || receiptCurrentPdfUrl);
+  if (pendingNumber || pendingHasPdf) {
+    $("receiptAddToListBtn").click();
+  }
+
+  const paymentType = receiptPaymentType;
+  const paidAmountInput = parseFloat($("receiptPaidAmount").value) || 0;
+  const paidAmount = paymentType === "parcial" ? paidAmountInput : Number(j.value || 0);
+
+  const validationError = validatePartialPayment(Number(j.value || 0), paymentType, paidAmount);
+  if (validationError) return showToast(validationError, "error");
+
+  loading(true);
+  try {
+    // Upload de PDFs pendentes
+    for (const r of receiptModalList) {
+      if (r._file) {
+        const result = await uploadPDF(r._file, currentUser.uid, () => {});
+        r.pdfUrl = result.url;
+        r.pdfName = r._file.name;
+        delete r._file;
+      }
+    }
+
+    const finalReceipts = receiptModalList.map(({ _file, ...rest }) => rest);
+    const hasReceipts = finalReceipts.length > 0;
+
+    // Não mexe no status se o job já tem NF (NF tem prioridade sobre Recibo)
+    let newStatus = j.status;
+    if (nfsArray(j).length === 0) {
+      if (hasReceipts) newStatus = "pago_recibo";
+      else if (j.status === "pago_recibo") newStatus = "pago";
+    }
+
+    const payDateFinal = j.payDate || today();
+    await updateDoc(doc(db, "users", currentUser.uid, "jobs", receiptTargetJobId), {
+      receipts: finalReceipts,
+      receipt: null,
+      status: newStatus,
+      paymentType,
+      paidAmount,
+      payDate: payDateFinal,
+      updatedAt: new Date()
+    });
+
+    const idx = allJobs.findIndex(x => x.id === receiptTargetJobId);
+    if (idx !== -1) {
+      allJobs[idx] = { ...allJobs[idx], receipts: finalReceipts, receipt: null, status: newStatus, paymentType, paidAmount, payDate: payDateFinal };
+    }
+
+    showToast("Alterações salvas!");
+    closeReceiptModal();
+    refreshAllViews();
+  } catch (e) {
+    console.error(e);
+    showToast(e.message || "Erro ao salvar Recibos.", "error");
+  } finally { loading(false); }
+});
+
+// ─────────────────────────────────────────────
 // NF PAGE
 // ─────────────────────────────────────────────
 function renderNFPage() {
@@ -1687,7 +1916,7 @@ on("repExportExcel", "click", () => {
     Status: statusLabel(j.status),
     "NF Nº": nfsArray(j).map(n => n.number).join("; "),
     "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
-    "Recibo": j.receipt?.number || (j.status === "pago_recibo" ? "Sim" : ""),
+    "Recibo": receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
     Observações: j.notes || ""
   }));
   const ws = XLSX.utils.json_to_sheet(data);
@@ -1809,7 +2038,7 @@ on("exportCSV", "click", () => {
   const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
   const rows = jobs.map(j => [
     jobDatesArray(j).join("; "), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
-    nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), j.receipt?.number || "", j.notes || ""
+    nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), receiptsArray(j).map(r => r.number).filter(Boolean).join("; "), j.notes || ""
   ]);
   const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   downloadFile(csv, "jobs.csv", "text/csv");
@@ -1827,7 +2056,7 @@ on("exportExcel", "click", () => {
     Status: statusLabel(j.status),
     "NF Nº": nfsArray(j).map(n => n.number).join("; "),
     "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
-    "Recibo": j.receipt?.number || (j.status === "pago_recibo" ? "Sim" : ""),
+    "Recibo": receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
     Observações: j.notes || ""
   }));
   const ws = XLSX.utils.json_to_sheet(data);

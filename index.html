@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=31" />
+  <link rel="stylesheet" href="css/style.css?v=32" />
 </head>
 <body>
 
@@ -137,6 +137,8 @@
           <select id="dashStatusFilter" class="dash-status-select">
             <option value="">Todos os status</option>
             <option value="pendente">🟡 Pendente</option>
+            <option value="pendente_nf">🟠 Pendente + NF</option>
+            <option value="pendente_recibo">🟠 Pendente + Recibo</option>
             <option value="pago">🟢 Pago</option>
             <option value="pago_nf">🔵 Pago + NF</option>
             <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
@@ -237,6 +239,8 @@
         <select id="filterStatus">
           <option value="">Todos os status</option>
           <option value="pendente">🟡 Pendente</option>
+          <option value="pendente_nf">🟠 Pendente + NF</option>
+          <option value="pendente_recibo">🟠 Pendente + Recibo</option>
           <option value="pago">🟢 Pago</option>
           <option value="pago_nf">🔵 Pago + NF</option>
           <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
@@ -578,6 +582,8 @@
           <label>Status *</label>
           <select id="jobStatus">
             <option value="pendente">🟡 Pendente</option>
+            <option value="pendente_nf">🟠 Pendente + NF Emitida</option>
+            <option value="pendente_recibo">🟠 Pendente + Recibo Emitido</option>
             <option value="pago">🟢 Pago</option>
             <option value="pago_nf">🔵 Pago + NF Emitida</option>
             <option value="pago_nf_pdf">🟣 Pago + NF + PDF</option>
@@ -704,6 +710,7 @@
       <div class="nf-section">
         <label class="nf-section-label">Situação de Pagamento</label>
         <div class="mode-toggle" id="nfPaymentTypeToggle">
+          <button type="button" class="mode-btn" data-ptype="pendente">⏳ Ainda Pendente</button>
           <button type="button" class="mode-btn active" data-ptype="total">✅ Pago Total</button>
           <button type="button" class="mode-btn" data-ptype="parcial">🟠 Pago Parcial</button>
         </div>
@@ -781,6 +788,7 @@
       <div class="nf-section">
         <label class="nf-section-label">Situação de Pagamento</label>
         <div class="mode-toggle" id="receiptPaymentTypeToggle">
+          <button type="button" class="mode-btn" data-ptype="pendente">⏳ Ainda Pendente</button>
           <button type="button" class="mode-btn active" data-ptype="total">✅ Pago Total</button>
           <button type="button" class="mode-btn" data-ptype="parcial">🟠 Pago Parcial</button>
         </div>
@@ -900,9 +908,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=31"></script>
-<script type="module" src="js/app.js?v=31"></script>
-<script type="module" src="js/clients.js?v=31"></script>
+<script type="module" src="js/firebase-config.js?v=32"></script>
+<script type="module" src="js/app.js?v=32"></script>
+<script type="module" src="js/clients.js?v=32"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

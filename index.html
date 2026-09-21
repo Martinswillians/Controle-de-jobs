@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=30" />
+  <link rel="stylesheet" href="css/style.css?v=31" />
 </head>
 <body>
 
@@ -600,35 +600,6 @@
           <input type="number" id="jobPaidAmount" placeholder="0,00" step="0.01" min="0" />
           <div class="pending-hint" id="pendingHint"></div>
         </div>
-        <div class="nf-section hidden" id="receiptSection">
-          <label class="nf-section-label">Recibo de Pagamento <span class="field-hint">(opcional)</span></label>
-          <div class="form-grid">
-            <div class="field field-full">
-              <label>Número/Referência do Recibo</label>
-              <input type="text" id="jobReceiptNumber" placeholder="Ex: 0012" />
-            </div>
-            <div class="field field-full">
-              <label>PDF do Recibo</label>
-              <div id="receiptPDFDropzone" class="pdf-dropzone">
-                <input type="file" id="receiptPDFFile" accept="application/pdf" hidden />
-                <div id="receiptPDFEmpty" class="pdf-dropzone-empty">
-                  <span class="pdf-dropzone-icon">📃</span>
-                  <span>Clique para escolher o PDF</span>
-                  <span class="pdf-dropzone-sub">ou arraste o arquivo aqui · máx 5MB</span>
-                </div>
-                <div id="receiptPDFPreview" class="pdf-dropzone-preview hidden">
-                  <span class="pdf-file-icon">📎</span>
-                  <span id="receiptPDFFileName" class="pdf-file-name"></span>
-                  <button type="button" id="receiptPDFRemove" class="pdf-file-remove" title="Remover">✕</button>
-                </div>
-                <div id="receiptPDFProgress" class="pdf-upload-progress hidden">
-                  <div class="pdf-upload-bar"><div id="receiptPDFProgressFill" class="pdf-upload-fill"></div></div>
-                  <span id="receiptPDFProgressText">Enviando...</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -797,6 +768,75 @@
   </div>
 </div>
 
+<!-- RECEIPT MODAL -->
+<div id="receiptModal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Recibos do Job</h3>
+      <button class="modal-close" id="closeReceiptModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="receiptJobInfo" class="nf-job-info"></div>
+
+      <div class="nf-section">
+        <label class="nf-section-label">Situação de Pagamento</label>
+        <div class="mode-toggle" id="receiptPaymentTypeToggle">
+          <button type="button" class="mode-btn active" data-ptype="total">✅ Pago Total</button>
+          <button type="button" class="mode-btn" data-ptype="parcial">🟠 Pago Parcial</button>
+        </div>
+        <div class="field hidden" id="receiptPaidAmountField" style="margin-top:10px">
+          <label>Valor Pago (R$) *</label>
+          <input type="number" id="receiptPaidAmount" placeholder="0,00" step="0.01" min="0" />
+          <div class="pending-hint" id="receiptPendingHint"></div>
+        </div>
+      </div>
+
+      <div class="nf-section">
+        <label class="nf-section-label" id="receiptListSectionLabel">Recibos Cadastrados</label>
+        <div id="receiptExistingList" class="nf-list"></div>
+      </div>
+
+      <div class="nf-section">
+        <label class="nf-section-label" id="receiptFormTitle">+ Novo Recibo</label>
+        <div class="form-grid">
+          <div class="field field-full">
+            <label>Número/Referência do Recibo <span class="field-hint">(opcional)</span></label>
+            <input type="text" id="receiptNumber" placeholder="Ex: 0012" />
+          </div>
+          <div class="field field-full">
+            <label>PDF do Recibo <span class="field-hint">(opcional)</span></label>
+            <div id="receiptPDFDropzone" class="pdf-dropzone">
+              <input type="file" id="receiptPDFFile" accept="application/pdf" hidden />
+              <div id="receiptPDFEmpty" class="pdf-dropzone-empty">
+                <span class="pdf-dropzone-icon">📃</span>
+                <span>Clique para escolher o PDF</span>
+                <span class="pdf-dropzone-sub">ou arraste o arquivo aqui · máx 5MB</span>
+              </div>
+              <div id="receiptPDFPreview" class="pdf-dropzone-preview hidden">
+                <span class="pdf-file-icon">📎</span>
+                <span id="receiptPDFFileName" class="pdf-file-name"></span>
+                <button type="button" id="receiptPDFRemove" class="pdf-file-remove" title="Remover">✕</button>
+              </div>
+              <div id="receiptPDFProgress" class="pdf-upload-progress hidden">
+                <div class="pdf-upload-bar"><div id="receiptPDFProgressFill" class="pdf-upload-fill"></div></div>
+                <span id="receiptPDFProgressText">Enviando...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="nf-form-actions">
+          <button type="button" class="btn-outline btn-sm hidden" id="receiptCancelEditBtn">Cancelar edição</button>
+          <button type="button" class="btn-outline btn-sm" id="receiptAddToListBtn">+ Adicionar à lista</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelReceiptModal">Cancelar</button>
+      <button class="btn-primary" id="saveReceiptBtn">Salvar Alterações</button>
+    </div>
+  </div>
+</div>
+
 <!-- IMPORT CLIENTS MODAL -->
 <div id="importClientsModal" class="modal-overlay hidden">
   <div class="modal modal-sm">
@@ -860,9 +900,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=30"></script>
-<script type="module" src="js/app.js?v=30"></script>
-<script type="module" src="js/clients.js?v=30"></script>
+<script type="module" src="js/firebase-config.js?v=31"></script>
+<script type="module" src="js/app.js?v=31"></script>
+<script type="module" src="js/clients.js?v=31"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

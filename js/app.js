@@ -104,6 +104,8 @@ function loading(show) {
 function statusLabel(s) {
   const map = {
     pendente: "🟡 Pendente",
+    pendente_nf: "🟠 Pendente + NF",
+    pendente_recibo: "🟠 Pendente + Recibo",
     pago: "🟢 Pago",
     pago_nf: "🔵 Pago + NF",
     pago_nf_pdf: "🟣 Pago + NF + PDF",
@@ -112,9 +114,17 @@ function statusLabel(s) {
   return map[s] || s;
 }
 
+// Status em que o job ainda NÃO foi pago (mesmo que já tenha NF/Recibo emitido)
+const PENDING_STATUSES = ["pendente", "pendente_nf", "pendente_recibo"];
+function isPendingStatus(status) { return PENDING_STATUSES.includes(status); }
+
+// Status em que o job tem Nota Fiscal emitida (pago ou não) — usado no cálculo do limite MEI
+const NF_ISSUED_STATUSES = ["pago_nf", "pago_nf_pdf", "pendente_nf"];
+function hasNFStatus(status) { return NF_ISSUED_STATUSES.includes(status); }
+
 // Quanto já foi efetivamente recebido deste job
 function paidAmountOf(j) {
-  if (j.status === "pendente") return 0;
+  if (isPendingStatus(j.status)) return 0;
   if (j.paymentType === "parcial") return Math.min(Number(j.paidAmount || 0), Number(j.value || 0));
   return Number(j.value || 0);
 }
@@ -160,7 +170,7 @@ function validatePartialPayment(value, paymentType, paidAmount) {
 function statusBadge(j) {
   const s = j.status;
   let html = `<span class="badge badge-${s}">${statusLabel(s)}</span>`;
-  if (s !== "pendente" && j.paymentType === "parcial") {
+  if (!isPendingStatus(s) && j.paymentType === "parcial") {
     html += ` <span class="badge badge-parcial">🟠 Parcial</span>`;
   }
   return html;
@@ -169,7 +179,7 @@ function statusBadge(j) {
 // Texto de valor para spans inline (NF views), com detalhe de parcial
 function valueInlineText(j) {
   const base = fmt(j.value);
-  if (j.status !== "pendente" && j.paymentType === "parcial") {
+  if (!isPendingStatus(j.status) && j.paymentType === "parcial") {
     return `${base} (Pago ${fmt(paidAmountOf(j))} · Falta ${fmt(pendingAmountOf(j))})`;
   }
   return base;
@@ -178,7 +188,7 @@ function valueInlineText(j) {
 // Célula de valor da tabela, com detalhe de pago/pendente quando parcial
 function valueCellHtml(j) {
   const total = Number(j.value || 0);
-  if (j.status !== "pendente" && j.paymentType === "parcial") {
+  if (!isPendingStatus(j.status) && j.paymentType === "parcial") {
     return `${fmt(total)}<div class="value-parcial-hint">Pago ${fmt(paidAmountOf(j))} · Falta ${fmt(pendingAmountOf(j))}</div>`;
   }
   return fmt(total);
@@ -469,7 +479,7 @@ function renderDashboard() {
   const pendente = periodJobs.reduce((a, j) => a + pendingAmountOf(j), 0);
   const total = periodJobs.reduce((a, j) => a + Number(j.value || 0), 0);
   const anoTotal = yearJobs.reduce((a, j) => a + Number(j.value || 0), 0);
-  const anoNF = yearJobs.filter(j => j.status === "pago_nf" || j.status === "pago_nf_pdf")
+  const anoNF = yearJobs.filter(j => hasNFStatus(j.status))
                          .reduce((a, j) => a + Number(j.value || 0), 0);
   const ticket = periodJobs.length ? total / periodJobs.length : 0;
 
@@ -810,7 +820,7 @@ on("cancelJobModal", "click", closeJobModal);
 
 on("jobStatus", "change", togglePayDateField);
 function togglePayDateField() {
-  const paid = $("jobStatus").value !== "pendente";
+  const paid = !isPendingStatus($("jobStatus").value);
   $("payDateField").style.display = paid ? "block" : "none";
   $("paymentTypeField").classList.toggle("hidden", !paid);
   if (!paid) {
@@ -840,7 +850,7 @@ $("paymentTypeToggle").querySelectorAll(".mode-btn").forEach(btn => {
 on("jobPaidAmount", "input", updatePendingHint);
 
 function updatePendingHint() {
-  if (jobPaymentType !== "parcial" || $("jobStatus").value === "pendente") {
+  if (jobPaymentType !== "parcial" || isPendingStatus($("jobStatus").value)) {
     $("pendingHint").textContent = "";
     return;
   }
@@ -872,15 +882,15 @@ on("saveJobBtn", "click", async () => {
 
   const existingJob = editingJobId ? allJobs.find(x => x.id === editingJobId) : null;
   const existingNFCount = existingJob ? nfsArray(existingJob).length : 0;
-  if (existingNFCount > 0 && status !== "pago_nf" && status !== "pago_nf_pdf") {
+  if (existingNFCount > 0 && !["pago_nf", "pago_nf_pdf", "pendente_nf"].includes(status)) {
     return showToast("Este job tem Notas Fiscais emitidas. Gerencie/remova as NFs pelo botão 🧾 NF antes de mudar o status.", "error");
   }
   const existingReceiptsCount = existingJob ? receiptsArray(existingJob).length : 0;
-  if (existingReceiptsCount > 0 && status !== "pago_recibo") {
+  if (existingReceiptsCount > 0 && !["pago_recibo", "pendente_recibo"].includes(status)) {
     return showToast("Este job tem Recibos cadastrados. Gerencie/remova os recibos pelo botão 📃 Recibo antes de mudar o status.", "error");
   }
 
-  const isPaid = status !== "pendente";
+  const isPaid = !isPendingStatus(status);
   const paymentType = isPaid && jobPaymentType === "parcial" ? "parcial" : "total";
   let paidAmount = 0;
   if (isPaid) {
@@ -1046,7 +1056,7 @@ function openNFModal(jobId) {
   if (!j) return;
 
   nfModalList = nfsArray(j).map(nf => ({ ...nf, id: nf.id || genId() }));
-  nfPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
+  nfPaymentType = isPendingStatus(j.status) ? "pendente" : (j.paymentType === "parcial" ? "parcial" : "total");
 
   $("nfJobInfo").innerHTML = `
     <strong>${j.name}</strong> — ${clientDisplayName(j.client)}<br>
@@ -1293,12 +1303,15 @@ on("saveNFBtn", "click", async () => {
     $("nfAddToListBtn").click();
   }
 
-  const paymentType = nfPaymentType;
+  const isPendingChoice = nfPaymentType === "pendente";
+  const paymentType = isPendingChoice ? "total" : nfPaymentType; // irrelevante se ainda pendente
   const paidAmountInput = parseFloat($("nfPaidAmount").value) || 0;
-  const paidAmount = paymentType === "parcial" ? paidAmountInput : Number(j.value || 0);
+  const paidAmount = isPendingChoice ? 0 : (paymentType === "parcial" ? paidAmountInput : Number(j.value || 0));
 
-  const validationError = validatePartialPayment(Number(j.value || 0), paymentType, paidAmount);
-  if (validationError) return showToast(validationError, "error");
+  if (!isPendingChoice) {
+    const validationError = validatePartialPayment(Number(j.value || 0), paymentType, paidAmount);
+    if (validationError) return showToast(validationError, "error");
+  }
 
   loading(true);
   try {
@@ -1316,10 +1329,15 @@ on("saveNFBtn", "click", async () => {
     const hasNFs = finalNFs.length > 0;
     const hasPdf = finalNFs.some(n => n.pdfUrl);
     let newStatus = j.status;
-    if (hasNFs) newStatus = hasPdf ? "pago_nf_pdf" : "pago_nf";
-    else if (j.status === "pago_nf" || j.status === "pago_nf_pdf") newStatus = "pago";
+    if (hasNFs) {
+      newStatus = isPendingChoice ? "pendente_nf" : (hasPdf ? "pago_nf_pdf" : "pago_nf");
+    } else if (j.status === "pago_nf" || j.status === "pago_nf_pdf") {
+      newStatus = "pago";
+    } else if (j.status === "pendente_nf") {
+      newStatus = "pendente";
+    }
 
-    const payDateFinal = j.payDate || today();
+    const payDateFinal = isPendingChoice ? "" : (j.payDate || today());
     await updateDoc(doc(db, "users", currentUser.uid, "jobs", nfTargetJobId), {
       nfs: finalNFs,
       nf: null,
@@ -1364,7 +1382,7 @@ function openReceiptModal(jobId) {
   if (!j) return;
 
   receiptModalList = receiptsArray(j).map(r => ({ ...r, id: r.id || genId() }));
-  receiptPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
+  receiptPaymentType = isPendingStatus(j.status) ? "pendente" : (j.paymentType === "parcial" ? "parcial" : "total");
 
   $("receiptJobInfo").innerHTML = `
     <strong>${j.name}</strong> — ${clientDisplayName(j.client)}<br>
@@ -1600,12 +1618,15 @@ on("saveReceiptBtn", "click", async () => {
     $("receiptAddToListBtn").click();
   }
 
-  const paymentType = receiptPaymentType;
+  const isPendingChoice = receiptPaymentType === "pendente";
+  const paymentType = isPendingChoice ? "total" : receiptPaymentType; // irrelevante se ainda pendente
   const paidAmountInput = parseFloat($("receiptPaidAmount").value) || 0;
-  const paidAmount = paymentType === "parcial" ? paidAmountInput : Number(j.value || 0);
+  const paidAmount = isPendingChoice ? 0 : (paymentType === "parcial" ? paidAmountInput : Number(j.value || 0));
 
-  const validationError = validatePartialPayment(Number(j.value || 0), paymentType, paidAmount);
-  if (validationError) return showToast(validationError, "error");
+  if (!isPendingChoice) {
+    const validationError = validatePartialPayment(Number(j.value || 0), paymentType, paidAmount);
+    if (validationError) return showToast(validationError, "error");
+  }
 
   loading(true);
   try {
@@ -1625,11 +1646,16 @@ on("saveReceiptBtn", "click", async () => {
     // Não mexe no status se o job já tem NF (NF tem prioridade sobre Recibo)
     let newStatus = j.status;
     if (nfsArray(j).length === 0) {
-      if (hasReceipts) newStatus = "pago_recibo";
-      else if (j.status === "pago_recibo") newStatus = "pago";
+      if (hasReceipts) {
+        newStatus = isPendingChoice ? "pendente_recibo" : "pago_recibo";
+      } else if (j.status === "pago_recibo") {
+        newStatus = "pago";
+      } else if (j.status === "pendente_recibo") {
+        newStatus = "pendente";
+      }
     }
 
-    const payDateFinal = j.payDate || today();
+    const payDateFinal = isPendingChoice ? "" : (j.payDate || today());
     await updateDoc(doc(db, "users", currentUser.uid, "jobs", receiptTargetJobId), {
       receipts: finalReceipts,
       receipt: null,
@@ -1775,8 +1801,8 @@ function renderNFvsMEI() {
   // Faturamento total do período — todos os jobs, com ou sem NF
   const totalGeral = jobs.reduce((a, j) => a + Number(j.value || 0), 0);
 
-  // Jobs com NF emitida (status pago_nf ou pago_nf_pdf)
-  const jobsWithNF = jobs.filter(j => j.status === "pago_nf" || j.status === "pago_nf_pdf");
+  // Jobs com NF emitida (pagos ou ainda pendentes de pagamento)
+  const jobsWithNF = jobs.filter(j => hasNFStatus(j.status));
   const totalNF = jobsWithNF.reduce((a, j) => a + Number(j.value || 0), 0);
   const countNF = jobsWithNF.length;
 
@@ -1871,14 +1897,14 @@ function renderChartCliente() {
 function renderChartStatus() {
   destroyChart("status");
   const jobs = getReportJobs();
-  const counts = { pendente: 0, pago: 0, pago_nf: 0, pago_nf_pdf: 0, pago_recibo: 0 };
+  const counts = { pendente: 0, pendente_nf: 0, pendente_recibo: 0, pago: 0, pago_nf: 0, pago_nf_pdf: 0, pago_recibo: 0 };
   jobs.forEach(j => { if (counts[j.status] !== undefined) counts[j.status]++; });
 
   charts.status = new Chart($("chartStatus"), {
     type: "doughnut",
     data: {
-      labels: ["Pendente", "Pago", "Pago + NF", "Pago + NF + PDF", "Pago + Recibo"],
-      datasets: [{ data: Object.values(counts), backgroundColor: ["#f39c12","#2ecc71","#3498db","#9b59b6","#17a398"], borderWidth: 0 }]
+      labels: ["Pendente", "Pendente + NF", "Pendente + Recibo", "Pago", "Pago + NF", "Pago + NF + PDF", "Pago + Recibo"],
+      datasets: [{ data: Object.values(counts), backgroundColor: ["#f39c12","#e67e22","#e67e22","#2ecc71","#3498db","#9b59b6","#17a398"], borderWidth: 0 }]
     },
     options: { maintainAspectRatio: false, responsive: true, plugins: { legend: { position: "bottom", labels: { color: "#9090b0", font: { family: "Space Grotesk" }, padding: 12 } } } }
   });
@@ -1961,8 +1987,8 @@ function renderMEI() {
   const yearJobs = allJobs.filter(j => j.date?.startsWith(String(year)));
   const faturado = yearJobs.reduce((a,j) => a + Number(j.value||0), 0);
 
-  // Faturamento com Nota Fiscal emitida — é esse valor que conta para o limite MEI
-  const jobsComNF = yearJobs.filter(j => j.status === "pago_nf" || j.status === "pago_nf_pdf");
+  // Faturamento com Nota Fiscal emitida (paga ou ainda pendente) — é esse valor que conta para o limite MEI
+  const jobsComNF = yearJobs.filter(j => hasNFStatus(j.status));
   const faturadoNF = jobsComNF.reduce((a,j) => a + Number(j.value||0), 0);
 
   const disponivel = MEI_LIMIT - faturadoNF;
@@ -2008,7 +2034,7 @@ function updateMEIAlert() {
   const year = new Date().getFullYear();
   const yearJobs = allJobs.filter(j => j.date?.startsWith(String(year)));
   const faturadoNF = yearJobs
-    .filter(j => j.status === "pago_nf" || j.status === "pago_nf_pdf")
+    .filter(j => hasNFStatus(j.status))
     .reduce((a,j)=>a+Number(j.value||0),0);
   const pct = faturadoNF / MEI_LIMIT * 100;
   const alert = $("meiAlert");

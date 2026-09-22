@@ -151,6 +151,11 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+// Normaliza texto para busca: minúsculas e sem acentos (ex: "consultoría" == "consultoria")
+function normalizeSearch(str) {
+  return (str || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 // Nome de exibição do cliente: usa o Nome Fantasia cadastrado, se houver; senão, o nome salvo no job
 function clientDisplayName(name) {
   if (!name) return name;
@@ -376,6 +381,7 @@ function navigateTo(page) {
   closeSidebar();
 
   if (page === "dashboard") renderDashboard();
+  else if (page === "pending") renderPendingPage();
   else if (page === "jobs") renderJobsPage();
   else if (page === "nf") renderNFPage();
   else if (page === "reports") renderReports();
@@ -437,14 +443,74 @@ function subscribeJobs() {
 function refreshAllViews() {
   const activePage = document.querySelector(".page.active")?.id?.replace("page-", "");
   if (activePage === "dashboard") renderDashboard();
+  else if (activePage === "pending") renderPendingPage();
   else if (activePage === "jobs") renderJobsPage();
   else if (activePage === "nf") renderNFPage();
   else if (activePage === "reports") renderReports();
   else if (activePage === "mei") renderMEI();
   updateMEIAlert();
+  updatePendingNavBadge();
   populateClientSuggestions();
   populateFilterClients();
 }
+
+function updatePendingNavBadge() {
+  const count = allJobs.filter(j => pendingAmountOf(j) > 0).length;
+  const badge = $("pendingNavBadge");
+  if (!badge) return;
+  badge.textContent = count;
+  badge.classList.toggle("hidden", count === 0);
+}
+
+// ─────────────────────────────────────────────
+// PENDÊNCIAS — todos os jobs com valor ainda a receber
+// ─────────────────────────────────────────────
+function renderPendingPage() {
+  const pending = allJobs.filter(j => pendingAmountOf(j) > 0);
+
+  const sort = $("pendingSort")?.value || "date_asc";
+  pending.sort((a, b) => {
+    if (sort === "date_desc") return (b.date || "").localeCompare(a.date || "");
+    if (sort === "value_desc") return pendingAmountOf(b) - pendingAmountOf(a);
+    return (a.date || "").localeCompare(b.date || ""); // date_asc (padrão)
+  });
+
+  const totalPendente = pending.reduce((a, j) => a + pendingAmountOf(j), 0);
+  const countDocOnly = pending.filter(j => j.status === "pendente_nf" || j.status === "pendente_recibo").length;
+
+  $("pendingCardTotal").textContent = fmt(totalPendente);
+  $("pendingCardCount").textContent = pending.length;
+  $("pendingCardDoc").textContent = countDocOnly;
+
+  const tbody = $("pendingBody");
+  tbody.innerHTML = "";
+  $("pendingEmpty").classList.toggle("hidden", pending.length > 0);
+
+  pending.forEach(j => {
+    const tr = document.createElement("tr");
+    tr.classList.add("clickable-row");
+    tr.innerHTML = `
+      <td class="job-date">${fmtJobDates(j)}</td>
+      <td><div class="job-name">${j.name}</div></td>
+      <td><div class="job-client">${clientDisplayName(j.client)}</div></td>
+      <td>${statusBadge(j)}</td>
+      <td class="job-value">${fmt(j.value)}</td>
+      <td class="job-value" style="color:var(--yellow);font-weight:700">${fmt(pendingAmountOf(j))}</td>
+      <td>
+        <div class="row-actions">
+          <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
+          <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
+          <button class="row-btn" title="Recibos" data-receipt-manage="${j.id}">📃 Recibo${receiptsArray(j).length ? ` (${receiptsArray(j).length})` : ""}</button>
+        </div>
+      </td>`;
+    tr.addEventListener("click", () => openJobModal(j.id));
+    tbody.appendChild(tr);
+  });
+
+  bindRowActions(tbody);
+}
+
+on("pendingSort", "change", renderPendingPage);
 
 // ─────────────────────────────────────────────
 // DASHBOARD
@@ -510,6 +576,7 @@ function renderDashboard() {
       <td>
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
+          <button class="row-btn" title="Duplicar Job" data-dup="${j.id}">📋</button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
           <button class="row-btn" title="Recibos" data-receipt-manage="${j.id}">📃 Recibo${receiptsArray(j).length ? ` (${receiptsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
@@ -566,6 +633,7 @@ function renderJobsPage() {
   const fClient = $("filterClient").value;
   const fStatus = $("filterStatus").value;
   const fNF = $("filterNF").value;
+  const fSearch = normalizeSearch($("searchJobs").value.trim());
 
   let jobs = [...allJobs];
   if (fMonth) jobs = jobs.filter(j => j.date?.startsWith(fMonth));
@@ -573,6 +641,13 @@ function renderJobsPage() {
   if (fStatus) jobs = jobs.filter(j => j.status === fStatus);
   if (fNF === "com") jobs = jobs.filter(j => nfsArray(j).length > 0);
   if (fNF === "sem") jobs = jobs.filter(j => nfsArray(j).length === 0);
+  if (fSearch) {
+    jobs = jobs.filter(j =>
+      normalizeSearch(j.name).includes(fSearch) ||
+      normalizeSearch(j.client).includes(fSearch) ||
+      normalizeSearch(clientDisplayName(j.client)).includes(fSearch)
+    );
+  }
 
   const tbody = $("allJobsBody");
   tbody.innerHTML = "";
@@ -595,6 +670,7 @@ function renderJobsPage() {
       <td>
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
+          <button class="row-btn" title="Duplicar Job" data-dup="${j.id}">📋</button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
           <button class="row-btn" title="Recibos" data-receipt-manage="${j.id}">📃 Recibo${receiptsArray(j).length ? ` (${receiptsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
@@ -634,11 +710,19 @@ function populateFilterMonths() {
 [$("filterMonth"), $("filterClient"), $("filterStatus"), $("filterNF")].forEach(sel => {
   sel?.addEventListener("change", renderJobsPage);
 });
+
+let searchJobsDebounce = null;
+on("searchJobs", "input", () => {
+  clearTimeout(searchJobsDebounce);
+  searchJobsDebounce = setTimeout(renderJobsPage, 200);
+});
+
 on("clearFilters", "click", () => {
   $("filterMonth").value = "";
   $("filterClient").value = "";
   $("filterStatus").value = "";
   $("filterNF").value = "";
+  $("searchJobs").value = "";
   renderJobsPage();
 });
 
@@ -648,6 +732,9 @@ on("clearFilters", "click", () => {
 function bindRowActions(tbody) {
   tbody.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openJobModal(btn.dataset.edit); });
+  });
+  tbody.querySelectorAll("[data-dup]").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); duplicateJob(btn.dataset.dup); });
   });
   tbody.querySelectorAll("[data-nf]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openNFModal(btn.dataset.nf); });
@@ -708,6 +795,48 @@ function openJobModal(jobId = null) {
   togglePayDateField();
   $("jobModal").classList.remove("hidden");
 }
+
+// Duplica um job existente: copia nome, cliente, tipo de valor e observações,
+// mas abre como um NOVO job (data de hoje, status Pendente, sem NF/Recibo herdados)
+function duplicateJob(jobId) {
+  const j = allJobs.find(x => x.id === jobId);
+  if (!j) return;
+
+  editingJobId = null;
+  $("jobModalTitle").textContent = "Novo Job (duplicado)";
+
+  jobModalDates = [today()];
+  jobModalHours = {};
+  jobPricingMode = j.pricingMode || "fixo";
+  jobPaymentType = "total";
+
+  $("jobName").value = j.name || "";
+  $("jobClient").value = j.client || "";
+  $("jobRate").value = j.rate || "";
+  $("jobValue").value = jobPricingMode === "fixo" ? (j.value || "") : "";
+  $("jobNotes").value = j.notes || "";
+  $("jobStatus").value = "pendente";
+  $("jobPayDate").value = "";
+  $("jobPaidAmount").value = "";
+
+  setPricingMode(jobPricingMode); // recalcula valor (diária/hora) e renderiza as datas
+  setPaymentType(jobPaymentType);
+  togglePayDateField();
+  $("jobModal").classList.remove("hidden");
+
+  showToast("Job duplicado — ajuste a(s) data(s) e salve.");
+}
+
+// ─────────────────────────────────────────────
+// LEGENDA DE STATUS (modal de ajuda)
+// ─────────────────────────────────────────────
+function openStatusLegendModal() { $("statusLegendModal").classList.remove("hidden"); }
+function closeStatusLegendModal() { $("statusLegendModal").classList.add("hidden"); }
+["statusHelpBtnJob", "statusHelpBtnDash", "statusHelpBtnJobs", "statusHelpBtnPending"].forEach(id => {
+  on(id, "click", (e) => { e.preventDefault(); openStatusLegendModal(); });
+});
+on("closeStatusLegendModal", "click", closeStatusLegendModal);
+on("closeStatusLegendModal2", "click", closeStatusLegendModal);
 
 // ─────────────────────────────────────────────
 // TIPO DE VALOR (Fixo / Diária / Hora)

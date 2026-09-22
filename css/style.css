@@ -228,6 +228,17 @@ a:hover { color: var(--accent-light); }
   background: var(--accent-dim);
   color: var(--accent-light);
 }
+.nav-badge {
+  display: inline-block;
+  background: var(--orange);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
 
 .sidebar-footer {
   padding: 16px;
@@ -271,6 +282,36 @@ a:hover { color: var(--accent-light); }
   letter-spacing: .05em;
   margin-bottom: 6px;
 }
+.help-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-size: 10px;
+  cursor: pointer;
+  vertical-align: middle;
+  margin-left: 4px;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 700;
+  transition: all .15s;
+}
+.help-icon-btn:hover { border-color: var(--accent); color: var(--accent-light); background: var(--accent-dim); }
+
+.status-legend-list { display: flex; flex-direction: column; gap: 14px; }
+.status-legend-item p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.5;
+}
+
 .field input,
 .field select,
 .field textarea {
@@ -550,6 +591,7 @@ a:hover { color: var(--accent-light); }
 .card-purple { border-left-color: var(--purple); background: linear-gradient(135deg, var(--bg2) 60%, var(--purple-dim)); }
 .card-cyan { border-left-color: #22d3ee; background: linear-gradient(135deg, var(--bg2) 60%, rgba(34,211,238,0.15)); }
 .card-neutral { border-left-color: var(--accent); background: linear-gradient(135deg, var(--bg2) 60%, var(--accent-dim)); }
+.card-orange { border-left-color: var(--orange); background: linear-gradient(135deg, var(--bg2) 60%, var(--orange-dim)); }
 .card-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
 .card-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text); }
 
@@ -671,6 +713,20 @@ a:hover { color: var(--accent-light); }
   background-position: right 10px center;
 }
 .filters-bar select:focus { border-color: var(--accent); }
+.search-jobs-input {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.search-jobs-input:focus { border-color: var(--accent); }
+.search-jobs-input::placeholder { color: var(--text2); }
 
 .export-bar {
   display: flex;

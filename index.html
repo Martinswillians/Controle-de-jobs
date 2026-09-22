@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=32" />
+  <link rel="stylesheet" href="css/style.css?v=33" />
 </head>
 <body>
 
@@ -108,6 +108,7 @@
     </div>
     <ul class="nav-menu">
       <li><a href="#" class="nav-link active" data-page="dashboard">📊 Dashboard</a></li>
+      <li><a href="#" class="nav-link" data-page="pending">⏰ Pendências <span id="pendingNavBadge" class="nav-badge hidden">0</span></a></li>
       <li><a href="#" class="nav-link" data-page="jobs">📋 Meus Jobs</a></li>
       <li><a href="#" class="nav-link" data-page="nf">🧾 Notas Fiscais</a></li>
       <li><a href="#" class="nav-link" data-page="reports">📈 Relatórios</a></li>
@@ -145,6 +146,7 @@
             <option value="pago_recibo">📃 Pago + Recibo</option>
           </select>
           <button class="btn-outline btn-sm" id="dashFilterBtn">🔍 Filtrar</button>
+          <button type="button" class="help-icon-btn" id="statusHelpBtnDash" title="O que significa cada status?">❓</button>
           <div class="month-nav" id="dashMonthNav">
             <button id="prevMonth">‹</button>
             <span id="currentMonthLabel"></span>
@@ -221,6 +223,58 @@
       </div>
     </div>
 
+    <!-- ─── PENDÊNCIAS ─── -->
+    <div id="page-pending" class="page">
+      <div class="page-header">
+        <h2>⏰ Pendências</h2>
+        <button type="button" class="help-icon-btn" id="statusHelpBtnPending" title="O que significa cada status?">❓</button>
+      </div>
+
+      <div class="cards-grid" style="margin-bottom:20px">
+        <div class="card card-yellow">
+          <div class="card-label">Total Pendente</div>
+          <div class="card-value" id="pendingCardTotal">R$ 0,00</div>
+        </div>
+        <div class="card card-neutral">
+          <div class="card-label">Jobs em Aberto</div>
+          <div class="card-value" id="pendingCardCount">0</div>
+        </div>
+        <div class="card card-orange">
+          <div class="card-label">Só Falta Receber (NF/Recibo já emitido)</div>
+          <div class="card-value" id="pendingCardDoc">0</div>
+        </div>
+      </div>
+
+      <div class="filters-bar">
+        <select id="pendingSort">
+          <option value="date_asc">Mais antigos primeiro</option>
+          <option value="date_desc">Mais recentes primeiro</option>
+          <option value="value_desc">Maior valor pendente primeiro</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table class="jobs-table" id="pendingTable">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Job</th>
+              <th>Cliente</th>
+              <th>Status</th>
+              <th>Total</th>
+              <th>Pendente</th>
+              <th>Opções</th>
+            </tr>
+          </thead>
+          <tbody id="pendingBody"></tbody>
+        </table>
+      </div>
+      <div id="pendingEmpty" class="empty-state hidden">
+        <span>🎉</span>
+        <p>Nenhuma pendência! Todos os jobs estão em dia.</p>
+      </div>
+    </div>
+
     <!-- ─── JOBS ─── -->
     <div id="page-jobs" class="page">
       <div class="page-header">
@@ -230,6 +284,7 @@
 
       <!-- FILTERS -->
       <div class="filters-bar">
+        <input type="text" id="searchJobs" class="search-jobs-input" placeholder="🔎 Buscar por job ou cliente..." />
         <select id="filterMonth">
           <option value="">Todos os meses</option>
         </select>
@@ -252,6 +307,7 @@
           <option value="sem">Sem NF</option>
         </select>
         <button class="btn-outline btn-sm" id="clearFilters">✕ Limpar</button>
+        <button type="button" class="help-icon-btn" id="statusHelpBtnJobs" title="O que significa cada status?">❓</button>
       </div>
 
       <div class="table-wrap">
@@ -579,7 +635,7 @@
           <textarea id="jobNotes" placeholder="Notas extras, contato, local..." rows="3"></textarea>
         </div>
         <div class="field">
-          <label>Status *</label>
+          <label>Status * <button type="button" class="help-icon-btn" id="statusHelpBtnJob" title="O que significa cada status?">❓</button></label>
           <select id="jobStatus">
             <option value="pendente">🟡 Pendente</option>
             <option value="pendente_nf">🟠 Pendente + NF Emitida</option>
@@ -878,6 +934,55 @@
   </div>
 </div>
 
+<!-- STATUS LEGEND MODAL -->
+<div id="statusLegendModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>O que significa cada status?</h3>
+      <button class="modal-close" id="closeStatusLegendModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="status-legend-list">
+        <div class="status-legend-item">
+          <span class="badge badge-pendente">🟡 Pendente</span>
+          <p>Job cadastrado, ainda sem pagamento e sem NF/Recibo emitido.</p>
+        </div>
+        <div class="status-legend-item">
+          <span class="badge badge-pendente_nf">🟠 Pendente + NF</span>
+          <p>Nota Fiscal já emitida, mas o pagamento ainda não foi recebido.</p>
+        </div>
+        <div class="status-legend-item">
+          <span class="badge badge-pendente_recibo">🟠 Pendente + Recibo</span>
+          <p>Recibo já emitido, mas o pagamento ainda não foi recebido.</p>
+        </div>
+        <div class="status-legend-item">
+          <span class="badge badge-pago">🟢 Pago</span>
+          <p>Pagamento recebido, sem NF nem Recibo emitido.</p>
+        </div>
+        <div class="status-legend-item">
+          <span class="badge badge-pago_nf">🔵 Pago + NF</span>
+          <p>Pagamento recebido e Nota Fiscal emitida.</p>
+        </div>
+        <div class="status-legend-item">
+          <span class="badge badge-pago_nf_pdf">🟣 Pago + NF + PDF</span>
+          <p>Pagamento recebido, Nota Fiscal emitida e o PDF já foi anexado.</p>
+        </div>
+        <div class="status-legend-item">
+          <span class="badge badge-pago_recibo">📃 Pago + Recibo</span>
+          <p>Pagamento recebido e Recibo emitido (em vez de NF).</p>
+        </div>
+        <div class="status-legend-item">
+          <span class="badge badge-parcial">🟠 Parcial</span>
+          <p>Aparece junto de um status "Pago" quando só uma parte do valor foi recebida — o restante ainda está pendente.</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="closeStatusLegendModal2">Entendi</button>
+    </div>
+  </div>
+</div>
+
 <!-- DELETE CONFIRM MODAL -->
 <div id="deleteModal" class="modal-overlay hidden">
   <div class="modal modal-sm">
@@ -908,9 +1013,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=32"></script>
-<script type="module" src="js/app.js?v=32"></script>
-<script type="module" src="js/clients.js?v=32"></script>
+<script type="module" src="js/firebase-config.js?v=33"></script>
+<script type="module" src="js/app.js?v=33"></script>
+<script type="module" src="js/clients.js?v=33"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

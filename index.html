@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=33" />
+  <link rel="stylesheet" href="css/style.css?v=34" />
 </head>
 <body>
 
@@ -210,7 +210,7 @@
                 <th>Cliente</th>
                 <th>Valor</th>
                 <th>Status</th>
-                <th></th>
+                <th>Opções</th>
               </tr>
             </thead>
             <tbody id="dashJobsBody"></tbody>
@@ -319,7 +319,7 @@
               <th>Cliente</th>
               <th>Valor</th>
               <th>Status</th>
-              <th>NF</th>
+              <th>NF/Recibo</th>
               <th>Opções</th>
             </tr>
           </thead>
@@ -672,6 +672,23 @@
 </div>
 
 <!-- CLIENT MODAL -->
+<!-- CLIENT VIEW MODAL (somente leitura) -->
+<div id="clientViewModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3 id="clientViewTitle">Cliente</h3>
+      <button class="modal-close" id="closeClientViewModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="clientViewBody" class="client-view-body"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelClientViewModal">Fechar</button>
+      <button class="btn-primary" id="clientViewEditBtn">✏️ Editar</button>
+    </div>
+  </div>
+</div>
+
 <div id="clientModal" class="modal-overlay hidden">
   <div class="modal" style="max-width:620px">
     <div class="modal-header">
@@ -1013,9 +1030,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=33"></script>
-<script type="module" src="js/app.js?v=33"></script>
-<script type="module" src="js/clients.js?v=33"></script>
+<script type="module" src="js/firebase-config.js?v=34"></script>
+<script type="module" src="js/app.js?v=34"></script>
+<script type="module" src="js/clients.js?v=34"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

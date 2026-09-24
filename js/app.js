@@ -147,6 +147,22 @@ function receiptsArray(j) {
   return [];
 }
 
+// Badges de NF e Recibo para a coluna "NF/Recibo" da tabela — NFs sempre primeiro
+function docsBadgeHtml(j) {
+  const nfs = nfsArray(j);
+  const receipts = receiptsArray(j);
+  if (!nfs.length && !receipts.length) return "";
+  let html = `<div class="docs-badge-stack">`;
+  if (nfs.length) {
+    html += `<span class="badge badge-doc-nf">🧾 ${nfs.length} NF${nfs.length > 1 ? "s" : ""}</span>`;
+  }
+  if (receipts.length) {
+    html += `<span class="badge badge-doc-recibo">📃 ${receipts.length} Recibo${receipts.length > 1 ? "s" : ""}</span>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -576,7 +592,7 @@ function renderDashboard() {
       <td>
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
-          <button class="row-btn" title="Duplicar Job" data-dup="${j.id}">📋</button>
+          <button class="row-btn dup-btn" title="Duplicar Job" data-dup="${j.id}"><span class="dup-icon">📋<span class="dup-plus">+</span></span></button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
           <button class="row-btn" title="Recibos" data-receipt-manage="${j.id}">📃 Recibo${receiptsArray(j).length ? ` (${receiptsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>
@@ -662,15 +678,11 @@ function renderJobsPage() {
       <td>${clientDisplayName(j.client)}</td>
       <td class="job-value">${valueCellHtml(j)}</td>
       <td>${statusBadge(j)}</td>
-      <td class="nf-icon">
-        ${nfsArray(j).length
-          ? `<span class="badge badge-parcial" style="background:var(--accent-dim);color:var(--accent-light)">🧾 ${nfsArray(j).length} NF${nfsArray(j).length > 1 ? "s" : ""}</span>`
-          : ""}
-      </td>
+      <td class="nf-icon">${docsBadgeHtml(j)}</td>
       <td>
         <div class="row-actions">
           <button class="row-btn" title="Editar Job" data-edit="${j.id}">✏️ Editar</button>
-          <button class="row-btn" title="Duplicar Job" data-dup="${j.id}">📋</button>
+          <button class="row-btn dup-btn" title="Duplicar Job" data-dup="${j.id}"><span class="dup-icon">📋<span class="dup-plus">+</span></span></button>
           <button class="row-btn nf-edit-btn" title="Notas Fiscais" data-nf="${j.id}">🧾 NF${nfsArray(j).length ? ` (${nfsArray(j).length})` : ""}</button>
           <button class="row-btn" title="Recibos" data-receipt-manage="${j.id}">📃 Recibo${receiptsArray(j).length ? ` (${receiptsArray(j).length})` : ""}</button>
           <button class="row-btn delete" title="Excluir Job" data-del="${j.id}">🗑️</button>

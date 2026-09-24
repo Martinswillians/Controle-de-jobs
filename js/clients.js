@@ -57,11 +57,13 @@ export function renderClientsList() {
 
   sorted.forEach(c => {
     const tr = document.createElement("tr");
+    tr.classList.add("clickable-row");
     const isInativo = c.status === "inativo";
     tr.innerHTML = `
       <td>
         <div class="client-name ${isInativo ? 'inativo' : ''}">${c.name}</div>
         ${c.tradeName ? `<div class="client-sub">${c.tradeName}</div>` : ""}
+        ${c.contactName ? `<div class="client-sub">👤 ${c.contactName}${c.contactRole ? ` — ${c.contactRole}` : ""}</div>` : ""}
       </td>
       <td class="client-cnpj">${formatCNPJ(c.cnpj) || "—"}</td>
       <td class="client-city">${c.city || "—"}</td>
@@ -81,19 +83,56 @@ export function renderClientsList() {
           <button class="row-btn delete" data-cdel="${c.id}" title="Excluir">🗑️</button>
         </div>
       </td>`;
+    tr.addEventListener("click", () => openClientViewModal(c.id));
     list.appendChild(tr);
   });
 
   // Bind actions
   list.querySelectorAll("[data-cedit]").forEach(btn => {
-    btn.addEventListener("click", () => openClientModal(btn.dataset.cedit));
+    btn.addEventListener("click", e => { e.stopPropagation(); openClientModal(btn.dataset.cedit); });
   });
   list.querySelectorAll("[data-ctoggle]").forEach(btn => {
-    btn.addEventListener("click", () => toggleClientStatus(btn.dataset.ctoggle, btn.dataset.cstatus));
+    btn.addEventListener("click", e => { e.stopPropagation(); toggleClientStatus(btn.dataset.ctoggle, btn.dataset.cstatus); });
   });
   list.querySelectorAll("[data-cdel]").forEach(btn => {
-    btn.addEventListener("click", () => confirmDeleteClient(btn.dataset.cdel));
+    btn.addEventListener("click", e => { e.stopPropagation(); confirmDeleteClient(btn.dataset.cdel); });
   });
+}
+
+// ─────────────────────────────────────────────
+// VISUALIZAR CLIENTE (somente leitura)
+// ─────────────────────────────────────────────
+export function openClientViewModal(clientId) {
+  const c = allClients.find(x => x.id === clientId);
+  if (!c) return;
+  const isInativo = c.status === "inativo";
+
+  const row = (label, value) => value
+    ? `<div class="client-view-row"><span class="client-view-label">${label}</span><span class="client-view-value">${value}</span></div>`
+    : "";
+
+  $("clientViewTitle").textContent = c.name;
+  $("clientViewBody").innerHTML = `
+    <div class="client-view-status">
+      ${isInativo ? '<span class="badge badge-inativo">⚫ Inativo</span>' : '<span class="badge badge-ativo">🟢 Ativo</span>'}
+    </div>
+    ${row("Nome Fantasia", c.tradeName)}
+    ${row("CNPJ / CPF", formatCNPJ(c.cnpj))}
+    ${row("Nome do Contato", c.contactName)}
+    ${row("Cargo", c.contactRole)}
+    ${row("Telefone", c.phone)}
+    ${row("E-mail", c.email)}
+    ${row("Endereço", c.address)}
+    ${row("Cidade", [c.city, c.state].filter(Boolean).join(" / "))}
+    ${row("CEP", c.cep)}
+    ${row("Observações", c.notes)}
+  `;
+  $("clientViewEditBtn").dataset.cedit = c.id;
+  $("clientViewModal").classList.remove("hidden");
+}
+
+export function closeClientViewModal() {
+  $("clientViewModal").classList.add("hidden");
 }
 
 // ─────────────────────────────────────────────
@@ -136,6 +175,8 @@ export function openClientModal(clientId = null) {
     $("cName").value = c.name || "";
     $("cTradeName").value = c.tradeName || "";
     $("cCNPJ").value = c.cnpj || "";
+    $("cContactName").value = c.contactName || "";
+    $("cContactRole").value = c.contactRole || "";
     $("cEmail").value = c.email || "";
     $("cPhone").value = c.phone || "";
     $("cAddress").value = c.address || "";
@@ -144,7 +185,7 @@ export function openClientModal(clientId = null) {
     $("cCEP").value = c.cep || "";
     $("cNotes").value = c.notes || "";
   } else {
-    ["cName","cTradeName","cCNPJ","cEmail","cPhone","cAddress","cCity","cState","cCEP","cNotes"]
+    ["cName","cTradeName","cCNPJ","cContactName","cContactRole","cEmail","cPhone","cAddress","cCity","cState","cCEP","cNotes"]
       .forEach(id => { const el = $(id); if(el) el.value = ""; });
     $("cState").value = "DF";
   }
@@ -168,6 +209,8 @@ export async function saveClient(uid, showToast, loading) {
     name,
     tradeName: $("cTradeName").value.trim(),
     cnpj: $("cCNPJ").value.trim(),
+    contactName: $("cContactName").value.trim(),
+    contactRole: $("cContactRole").value.trim(),
     email: $("cEmail").value.trim(),
     phone: $("cPhone").value.trim(),
     address: $("cAddress").value.trim(),
@@ -236,6 +279,14 @@ export function initClientsEvents(uid, showToast, loading) {
   $("closeClientModal")?.addEventListener("click", closeClientModal);
   $("cancelClientModal")?.addEventListener("click", closeClientModal);
   $("saveClientBtn")?.addEventListener("click", () => saveClient(uid, showToast, loading));
+
+  // Visualizar cliente
+  $("closeClientViewModal")?.addEventListener("click", closeClientViewModal);
+  $("cancelClientViewModal")?.addEventListener("click", closeClientViewModal);
+  $("clientViewEditBtn")?.addEventListener("click", () => {
+    closeClientViewModal();
+    openClientModal($("clientViewEditBtn").dataset.cedit);
+  });
 
   // Export
   $("exportClientsBtn")?.addEventListener("click", () => exportClients(showToast));
@@ -408,6 +459,8 @@ async function doImport(mode, uid, showToast, loading) {
         name,
         tradeName: client.tradeName || client["Nome Fantasia"] || "",
         cnpj: client.cnpj || client.CNPJ || "",
+        contactName: client.contactName || client["Nome do Contato"] || "",
+        contactRole: client.contactRole || client["Cargo"] || "",
         email: client.email || client.Email || "",
         phone: client.phone || client.Telefone || "",
         address: client.address || client.Endereço || "",

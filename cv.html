@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Currículo — Willians Alves Martins</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --teal:#14b8a6;--blue:#3b82f6;--dark:#0f172a;
+  --text:#1e293b;--muted:#64748b;--light:#f8fafc;--border:#e2e8f0;
+}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;font-size:11.5px;color:var(--text);background:#fff;line-height:1.5}
+
+/* ── PRINT BAR (screen only) ── */
+.print-bar{background:var(--dark);color:#fff;padding:.55rem 1.5rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:99}
+.print-bar p{font-size:.72rem;opacity:.6}
+.print-btn{background:var(--teal);color:#fff;border:none;padding:.4rem 1.1rem;border-radius:5px;cursor:pointer;font-size:.75rem;font-weight:700;letter-spacing:.04em}
+
+/* ── PAGE ── */
+.page{max-width:760px;margin:0 auto;padding:1.8rem 1.6rem}
+
+/* ── HEADER ── */
+.cv-head{display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start;margin-bottom:1.2rem;padding-bottom:1rem;border-bottom:2.5px solid var(--dark)}
+.cv-name{font-size:1.7rem;font-weight:800;letter-spacing:-.03em;line-height:1;color:var(--dark)}
+.cv-role{font-size:.7rem;color:var(--teal);font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-top:.3rem}
+.cv-contact-block{text-align:right;font-size:.7rem;color:var(--muted);line-height:1.9}
+.cv-contact-block a{color:var(--teal);text-decoration:none}
+
+/* ── METRICS ── */
+.cv-metrics{display:flex;gap:.8rem;margin-bottom:1rem}
+.metric{background:var(--light);border:1px solid var(--border);border-radius:6px;padding:.4rem .8rem;text-align:center;flex:1}
+.metric-n{font-size:1.1rem;font-weight:800;color:var(--dark);display:block;line-height:1}
+.metric-l{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+
+/* ── SUMMARY ── */
+.cv-summary{font-size:.8rem;color:var(--muted);line-height:1.7;margin-bottom:1rem;padding:.7rem;background:var(--light);border-left:3px solid var(--teal);border-radius:0 4px 4px 0}
+
+/* ── 2-COL BODY ── */
+.cv-body{display:grid;grid-template-columns:1fr 240px;gap:1.4rem}
+
+/* ── SECTION TITLES ── */
+.sec-title{font-size:.6rem;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:var(--teal);border-bottom:1px solid var(--border);padding-bottom:.25rem;margin-bottom:.7rem;margin-top:1rem}
+.sec-title:first-child{margin-top:0}
+
+/* ── EXPERIENCE ── */
+.exp{margin-bottom:.9rem;padding-bottom:.9rem;border-bottom:1px solid var(--border)}
+.exp:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.exp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;margin-bottom:.15rem}
+.exp-title{font-size:.85rem;font-weight:700;color:var(--dark)}
+.exp-period{font-size:.65rem;color:var(--muted);white-space:nowrap;text-align:right}
+.exp-current{display:inline-block;background:#d1fae5;color:#065f46;font-size:.55rem;font-weight:800;padding:.05rem .35rem;border-radius:3px;letter-spacing:.05em;margin-left:.3rem}
+.exp-co{font-size:.7rem;color:var(--teal);font-weight:600;margin-bottom:.35rem}
+.exp-ul{padding-left:.9rem;margin-bottom:.4rem}
+.exp-ul li{font-size:.75rem;color:var(--muted);margin-bottom:.2rem;line-height:1.55}
+.exp-ul li strong{color:var(--text)}
+.exp-tags{display:flex;flex-wrap:wrap;gap:.2rem}
+.exp-tag{font-size:.58rem;background:#eff6ff;color:#1d4ed8;padding:.1rem .4rem;border-radius:3px;border:1px solid #bfdbfe;font-weight:500}
+
+/* ── PROJECTS TABLE ── */
+.proj-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-bottom:.5rem}
+.proj-table th{text-align:left;font-size:.6rem;font-weight:700;letter-spacing:.07em;color:var(--muted);text-transform:uppercase;padding:.3rem .4rem;border-bottom:1px solid var(--border)}
+.proj-table td{padding:.35rem .4rem;border-bottom:1px solid #f1f5f9;vertical-align:top}
+.proj-table tr:last-child td{border-bottom:none}
+.proj-name{font-weight:700;color:var(--dark)}
+.proj-client{color:var(--muted);font-size:.65rem}
+.proj-role{color:var(--teal);font-weight:600}
+
+/* ── SIDEBAR ── */
+/* Skills */
+.skill-group{margin-bottom:.8rem}
+.skill-label{font-size:.62rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.3rem}
+.skill-tags{display:flex;flex-wrap:wrap;gap:.25rem}
+.s-tag{font-size:.63rem;background:var(--light);color:var(--text);padding:.15rem .45rem;border-radius:3px;border:1px solid var(--border)}
+
+/* Education */
+.edu{margin-bottom:.65rem}
+.edu-type{font-size:.58rem;color:var(--teal);font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.edu-degree{font-size:.75rem;font-weight:700;color:var(--dark);line-height:1.3}
+.edu-school{font-size:.65rem;color:var(--muted)}
+
+/* Certs */
+.cert{display:flex;align-items:flex-start;gap:.35rem;margin-bottom:.45rem}
+.cert-dot{color:var(--teal);font-size:.55rem;margin-top:.2rem;flex-shrink:0}
+.cert-name{font-size:.7rem;font-weight:600;color:var(--dark);line-height:1.3}
+.cert-src{font-size:.62rem;color:var(--muted)}
+
+/* ── PRINT ── */
+@media print{
+  .print-bar{display:none}
+  .page{padding:.8rem .8rem;max-width:100%}
+  body{font-size:10.5px}
+  .cv-name{font-size:1.4rem}
+  .metric-n{font-size:.95rem}
+  .cv-body{grid-template-columns:1fr 210px;gap:1rem}
+  @page{margin:.9cm 1cm;size:A4}
+  .exp{page-break-inside:avoid}
+  .cv-body{page-break-inside:avoid}
+}
+@media(max-width:600px){
+  .cv-head,.cv-body{grid-template-columns:1fr}
+  .cv-contact-block{text-align:left}
+  .cv-metrics{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <p>Currículo · Willians Alves Martins · 2026</p>
+  <button class="print-btn" onclick="window.print()">⬇ Salvar PDF</button>
+</div>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="cv-head">
+    <div>
+      <div class="cv-name">Willians Alves Martins</div>
+      <div class="cv-role">Analista de TI &nbsp;·&nbsp; Scrum Master &nbsp;·&nbsp; Analista de Requisitos</div>
+    </div>
+    <div class="cv-contact-block">
+      <a href="mailto:williansmartins.arquienge@gmail.com">williansmartins.arquienge@gmail.com</a><br>
+      <a href="https://wa.me/5561974037037" target="_blank">WhatsApp</a>
+      &nbsp;·&nbsp;
+      <a href="https://www.linkedin.com/in/willians-martins-11157313/" target="_blank">LinkedIn</a>
+      &nbsp;·&nbsp;
+      <a href="https://martinswillians.github.io/paginapessoal/" target="_blank">Portfolio</a><br>
+      Brasília, DF · Brasil
+    </div>
+  </div>
+
+  <!-- METRICS -->
+  <div class="cv-metrics">
+    <div class="metric"><span class="metric-n">17+</span><span class="metric-l">Anos de experiência</span></div>
+    <div class="metric"><span class="metric-n">8M+</span><span class="metric-l">Beneficiários impactados</span></div>
+    <div class="metric"><span class="metric-n">5</span><span class="metric-l">Projetos gov. entregues</span></div>
+    <div class="metric"><span class="metric-n">3</span><span class="metric-l">Estados atendidos</span></div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div class="cv-summary">
+    Analista de TI com expertise em gestão operacional de ambientes de missão crítica, análise de requisitos e metodologias ágeis. Histórico em projetos governamentais e corporativos de alto impacto — Dataprev, MAPA/PNUD, Telebrás, BNB e TJCE — garantindo alta disponibilidade, integridade de dados e alinhamento entre negócio e tecnologia.
+  </div>
+
+  <!-- 2-COLUMN BODY -->
+  <div class="cv-body">
+
+    <!-- LEFT: EXPERIENCE + PROJECTS -->
+    <div>
+      <div class="sec-title">Experiência Profissional</div>
+
+      <div class="exp">
+        <div class="exp-head">
+          <div class="exp-title">Analista de Tecnologia da Informação <span class="exp-current">● atual</span></div>
+          <div class="exp-period">Jan/2026 — Atual<br>~6 meses</div>
+        </div>
+        <div class="exp-co">Dataprev — Empresa de Tecnologia e Informações da Previdência Social</div>
+        <ul class="exp-ul">
+          <li>Gestão operacional de rotinas batch de larga escala, garantindo processamento de <strong>8 milhões de benefícios</strong> dentro das janelas críticas.</li>
+          <li>Controle de fluxos de transmissão de dados entre Dataprev e clientes externos, assegurando integridade e segurança.</li>
+          <li>Atuação na <strong>DIOT/DEOC</strong> com foco em missão crítica e mitigação de falhas.</li>
+        </ul>
+        <div class="exp-tags"><span class="exp-tag">Missão Crítica</span><span class="exp-tag">Batch</span><span class="exp-tag">DIOT/DEOC</span><span class="exp-tag">Linux</span></div>
+      </div>
+
+      <div class="exp">
+        <div class="exp-head">
+          <div class="exp-title">Analista de Requisitos Sênior & Scrum Master</div>
+          <div class="exp-period">Ago/2023 — Jan/2026<br>2 anos 5 meses</div>
+        </div>
+        <div class="exp-co">Engesoftware</div>
+        <ul class="exp-ul">
+          <li>Scrum Master: facilitação de Daily, Planning, Review e Retrospective; gestão de backlog e sprints no Jira.</li>
+          <li>Elicitação e análise de requisitos, documentação técnica, prototipagem e acompanhamento do ciclo de desenvolvimento.</li>
+          <li>Interface direta com clientes governamentais e corporativos para alinhamento de expectativas e entregas.</li>
+          <li>Projetos: SISPA (MAPA/PNUD), Portal Telebrás, BNB e TJCE.</li>
+        </ul>
+        <div class="exp-tags"><span class="exp-tag">Scrum Master</span><span class="exp-tag">Análise de Requisitos</span><span class="exp-tag">Jira</span><span class="exp-tag">Azure DevOps</span><span class="exp-tag">PNUD</span></div>
+      </div>
+
+      <div class="exp">
+        <div class="exp-head">
+          <div class="exp-title">Gerente Sênior Comercial</div>
+          <div class="exp-period">Jan/2008 — Fev/2017<br>9 anos 1 mês</div>
+        </div>
+        <div class="exp-co">Wise Up</div>
+        <ul class="exp-ul">
+          <li>Gestão de equipes comerciais, formação, treinamento e controle de indicadores de desempenho.</li>
+          <li>Gestão de qualidade de atendimento e pós-venda.</li>
+        </ul>
+      </div>
+
+      <div class="sec-title">Principais Projetos</div>
+      <table class="proj-table">
+        <thead>
+          <tr><th>Projeto</th><th>Cliente</th><th>Papel</th><th>Período</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><span class="proj-name">SISPA</span><br><span class="proj-client">MAPA / ANVISA / IBAMA (PNUD)</span></td><td></td><td class="proj-role">Analista de Requisitos</td><td>2023–2024</td></tr>
+          <tr><td><span class="proj-name">Portal do Cliente</span><br><span class="proj-client">Telebrás</span></td><td></td><td class="proj-role">AR Sênior & Scrum Master</td><td>2024–2025</td></tr>
+          <tr><td><span class="proj-name">Soluções Bancárias</span><br><span class="proj-client">Banco do Nordeste (BNB)</span></td><td></td><td class="proj-role">Analista de Requisitos</td><td>2024</td></tr>
+          <tr><td><span class="proj-name">Soluções Judiciais</span><br><span class="proj-client">TJCE</span></td><td></td><td class="proj-role">AR Sênior & Scrum Master</td><td>2023–2024</td></tr>
+          <tr><td><span class="proj-name">Manual DIOT</span><br><span class="proj-client">Dataprev</span></td><td></td><td class="proj-role">Analista de TI</td><td>2026</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- RIGHT: SKILLS + EDUCATION + CERTS -->
+    <div>
+
+      <div class="sec-title">Habilidades</div>
+
+      <div class="skill-group">
+        <div class="skill-label">Gestão & Metodologia</div>
+        <div class="skill-tags">
+          <span class="s-tag">Scrum Master / Ágil</span>
+          <span class="s-tag">Análise de Requisitos</span>
+          <span class="s-tag">Jira / Azure DevOps</span>
+          <span class="s-tag">Gestão de Backlog</span>
+          <span class="s-tag">BDD</span>
+          <span class="s-tag">Prototipagem</span>
+        </div>
+      </div>
+
+      <div class="skill-group">
+        <div class="skill-label">Infraestrutura & Ops</div>
+        <div class="skill-tags">
+          <span class="s-tag">Missão Crítica / Batch</span>
+          <span class="s-tag">Transmissão de Dados</span>
+          <span class="s-tag">Linux / Servidores</span>
+        </div>
+      </div>
+
+      <div class="skill-group">
+        <div class="skill-label">Tecnologia</div>
+        <div class="skill-tags">
+          <span class="s-tag">JavaScript</span>
+          <span class="s-tag">HTML5</span>
+          <span class="s-tag">CSS3</span>
+          <span class="s-tag">Firebase</span>
+          <span class="s-tag">GitHub</span>
+          <span class="s-tag">Figma</span>
+        </div>
+      </div>
+
+      <div class="sec-title">Formação</div>
+
+      <div class="edu">
+        <div class="edu-type">// Pós-Graduação</div>
+        <div class="edu-degree">Tecnologia de Redes</div>
+        <div class="edu-school">FACTI — Faculdade de Tecnologia Ícone</div>
+      </div>
+      <div class="edu">
+        <div class="edu-type">// Graduação</div>
+        <div class="edu-degree">Gestão da Tecnologia da Informação</div>
+        <div class="edu-school">Centro Universitário Estácio</div>
+      </div>
+      <div class="edu">
+        <div class="edu-type">// Graduação</div>
+        <div class="edu-degree">Análise e Desenvolvimento de Sistemas</div>
+        <div class="edu-school">Centro Universitário Estácio</div>
+      </div>
+
+      <div class="sec-title">Certificações</div>
+
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Scrum Fundamentals Certified (SFC)</div><div class="cert-src">SCRUMstudy</div></div></div>
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Product Owner e Requisitos</div><div class="cert-src">Engesoftware · 2024</div></div></div>
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Jira na Prática</div><div class="cert-src">Engesoftware · 2024</div></div></div>
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Azure DevOps — Execução de Testes</div><div class="cert-src">USP / Coursera · 2022</div></div></div>
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Front-end e Programação</div><div class="cert-src">Oracle Alura · 2022</div></div></div>
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Comunicação e Oratória</div><div class="cert-src">Escola Conquer · 2022</div></div></div>
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Liderança e Resiliência</div><div class="cert-src">PUCRS · 2021</div></div></div>
+      <div class="cert"><span class="cert-dot">◆</span><div><div class="cert-name">Linux: Diretórios, Arquivos e Processos</div><div class="cert-src">Alura · Dataprev · 2026</div></div></div>
+
+    </div>
+  </div><!-- /cv-body -->
+
+</div><!-- /page -->
+
+<script>
+  if(location.search.includes('print=1')) window.print();
+</script>
+</body>
+</html>

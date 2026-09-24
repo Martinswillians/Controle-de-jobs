@@ -1071,6 +1071,26 @@ canvas { max-width: 100%; }
 .client-name { font-weight: 600; }
 .client-name.inativo { opacity: .45; text-decoration: line-through; }
 .client-sub { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+/* Modal de visualização de cliente (somente leitura) */
+.client-view-status { margin-bottom: 16px; }
+.client-view-body { display: flex; flex-direction: column; gap: 12px; }
+.client-view-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.client-view-row:last-child { border-bottom: none; padding-bottom: 0; }
+.client-view-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text2);
+}
+.client-view-value { font-size: 14px; color: var(--text); }
 .client-cnpj { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text2); }
 .client-city { font-size: 13px; color: var(--text2); }
 .badge-ativo { background: var(--green-dim); color: var(--green); }
@@ -1307,7 +1327,46 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
   color: #fff;
 }
 
+.dup-btn {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.dup-btn:hover {
+  background: var(--blue);
+  color: #fff;
+}
+.dup-icon {
+  position: relative;
+  display: inline-flex;
+}
+.dup-plus {
+  position: absolute;
+  bottom: -4px;
+  right: -6px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 13px;
+  text-align: center;
+  border: 1.5px solid var(--bg2);
+}
+.dup-btn:hover .dup-plus { border-color: var(--blue); }
+
 .nf-icon { text-align: center; }
+
+.docs-badge-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.badge-doc-nf { background: var(--purple-dim); color: var(--purple); white-space: nowrap; }
+.badge-doc-recibo { background: var(--teal-dim); color: var(--teal); white-space: nowrap; }
 
 /* Modal de NF — seções (Pagamento / Lista de NFs / Formulário) */
 .nf-section {

@@ -147,21 +147,106 @@ function receiptsArray(j) {
   return [];
 }
 
-// Badges de NF e Recibo para a coluna "NF/Recibo" da tabela — NFs sempre primeiro
+// Badges de NF e Recibo para a coluna "NF/Recibo" da tabela — NFs sempre primeiro.
+// Clicáveis: abrem a visualização dos comprovantes (não o modal de incluir/editar).
 function docsBadgeHtml(j) {
   const nfs = nfsArray(j);
   const receipts = receiptsArray(j);
   if (!nfs.length && !receipts.length) return "";
   let html = `<div class="docs-badge-stack">`;
   if (nfs.length) {
-    html += `<span class="badge badge-doc-nf">🧾 ${nfs.length} NF${nfs.length > 1 ? "s" : ""}</span>`;
+    html += `<button type="button" class="badge badge-doc-nf" data-viewdocs="${j.id}" data-doctype="nf">🧾 ${nfs.length} NF${nfs.length > 1 ? "s" : ""}</button>`;
   }
   if (receipts.length) {
-    html += `<span class="badge badge-doc-recibo">📃 ${receipts.length} Recibo${receipts.length > 1 ? "s" : ""}</span>`;
+    html += `<button type="button" class="badge badge-doc-recibo" data-viewdocs="${j.id}" data-doctype="recibo">📃 ${receipts.length} Recibo${receipts.length > 1 ? "s" : ""}</button>`;
   }
   html += `</div>`;
   return html;
 }
+
+// ─────────────────────────────────────────────
+// VISUALIZAR COMPROVANTES (somente leitura — NF e/ou Recibo)
+// ─────────────────────────────────────────────
+let docsViewJobId = null;
+let docsViewType = "nf"; // "nf" | "recibo"
+
+function openDocsViewModal(jobId, defaultType) {
+  const j = allJobs.find(x => x.id === jobId);
+  if (!j) return;
+  const nfs = nfsArray(j);
+  const receipts = receiptsArray(j);
+  if (!nfs.length && !receipts.length) return;
+
+  docsViewJobId = jobId;
+  docsViewType = (defaultType === "recibo" && receipts.length) ? "recibo"
+    : (defaultType === "nf" && nfs.length) ? "nf"
+    : (nfs.length ? "nf" : "recibo");
+
+  $("docsViewTitle").textContent = j.name;
+  $("docsViewSubtitle").textContent = `${clientDisplayName(j.client)} · ${valueInlineText(j)}`;
+
+  const showTabs = nfs.length > 0 && receipts.length > 0;
+  const tabsBox = $("docsViewTabs");
+  tabsBox.classList.toggle("hidden", !showTabs);
+  if (showTabs) {
+    tabsBox.innerHTML = `
+      <button type="button" class="mode-btn ${docsViewType === "nf" ? "active" : ""}" data-doctab="nf">🧾 Notas Fiscais (${nfs.length})</button>
+      <button type="button" class="mode-btn ${docsViewType === "recibo" ? "active" : ""}" data-doctab="recibo">📃 Recibos (${receipts.length})</button>`;
+    tabsBox.querySelectorAll("[data-doctab]").forEach(btn => {
+      btn.addEventListener("click", () => { docsViewType = btn.dataset.doctab; renderDocsViewList(); updateDocsViewTabsActive(); });
+    });
+  }
+
+  renderDocsViewList();
+  $("docsViewModal").classList.remove("hidden");
+}
+
+function updateDocsViewTabsActive() {
+  $("docsViewTabs").querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.doctab === docsViewType);
+  });
+}
+
+function renderDocsViewList() {
+  const j = allJobs.find(x => x.id === docsViewJobId);
+  if (!j) return;
+  const items = docsViewType === "nf" ? nfsArray(j) : receiptsArray(j);
+  const box = $("docsViewList");
+
+  if (!items.length) {
+    box.innerHTML = `<div class="nf-list-empty">Nenhum documento encontrado.</div>`;
+    return;
+  }
+
+  box.innerHTML = items.map(d => `
+    <div class="nf-list-item">
+      <div class="nf-list-item-info">
+        <span class="nf-number">${docsViewType === "nf" ? `NF #${d.number || "-"}` : (d.number ? `Recibo #${d.number}` : "Recibo")}</span>
+        <div class="nf-list-item-meta">
+          ${d.date ? `<span>📅 ${fmtDate(d.date)}</span>` : ""}
+          ${!d.link && !d.pdfUrl ? `<span>Sem link ou PDF anexado</span>` : ""}
+        </div>
+      </div>
+      <div class="nf-list-item-actions">
+        ${d.link ? `<button type="button" data-doclink="${d.link}" title="Abrir link">🔗</button>` : ""}
+        ${d.pdfUrl ? `<button type="button" data-docpdf="${d.pdfUrl}" title="Ver PDF">📄</button>` : ""}
+      </div>
+    </div>`).join("");
+
+  box.querySelectorAll("[data-doclink]").forEach(btn => {
+    btn.addEventListener("click", () => window.open(btn.dataset.doclink, "_blank"));
+  });
+  box.querySelectorAll("[data-docpdf]").forEach(btn => {
+    btn.addEventListener("click", () => window.open(btn.dataset.docpdf, "_blank"));
+  });
+}
+
+function closeDocsViewModal() {
+  $("docsViewModal").classList.add("hidden");
+  docsViewJobId = null;
+}
+on("closeDocsViewModal", "click", closeDocsViewModal);
+on("cancelDocsViewModal", "click", closeDocsViewModal);
 
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -655,8 +740,9 @@ function renderJobsPage() {
   if (fMonth) jobs = jobs.filter(j => j.date?.startsWith(fMonth));
   if (fClient) jobs = jobs.filter(j => j.client === fClient);
   if (fStatus) jobs = jobs.filter(j => j.status === fStatus);
-  if (fNF === "com") jobs = jobs.filter(j => nfsArray(j).length > 0);
-  if (fNF === "sem") jobs = jobs.filter(j => nfsArray(j).length === 0);
+  const hasDocs = j => nfsArray(j).length > 0 || receiptsArray(j).length > 0;
+  if (fNF === "com") jobs = jobs.filter(hasDocs);
+  if (fNF === "sem") jobs = jobs.filter(j => !hasDocs(j));
   if (fSearch) {
     jobs = jobs.filter(j =>
       normalizeSearch(j.name).includes(fSearch) ||
@@ -753,6 +839,9 @@ function bindRowActions(tbody) {
   });
   tbody.querySelectorAll("[data-receipt-manage]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openReceiptModal(btn.dataset.receiptManage); });
+  });
+  tbody.querySelectorAll("[data-viewdocs]").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); openDocsViewModal(btn.dataset.viewdocs, btn.dataset.doctype); });
   });
   tbody.querySelectorAll("[data-del]").forEach(btn => {
     btn.addEventListener("click", e => { e.stopPropagation(); openDeleteModal(btn.dataset.del); });
@@ -1825,31 +1914,39 @@ on("saveReceiptBtn", "click", async () => {
 // NF PAGE
 // ─────────────────────────────────────────────
 function renderNFPage() {
-  const nfJobs = allJobs.filter(j => nfsArray(j).length > 0);
+  const docJobs = allJobs.filter(j => nfsArray(j).length > 0 || receiptsArray(j).length > 0);
   const container = $("nfList");
   container.innerHTML = "";
-  $("nfEmpty").classList.toggle("hidden", nfJobs.length > 0);
+  $("nfEmpty").classList.toggle("hidden", docJobs.length > 0);
 
-  nfJobs.forEach(j => {
+  docJobs.forEach(j => {
     const nfs = nfsArray(j);
+    const receipts = receiptsArray(j);
     const card = document.createElement("div");
     card.className = "nf-card";
     card.innerHTML = `
       <div class="nf-card-header">
-        <span class="nf-number">${nfs.length} NF${nfs.length > 1 ? "s" : ""}: ${nfs.map(n => `#${n.number}`).join(", ")}</span>
+        <span class="nf-number">
+          ${nfs.length ? `🧾 ${nfs.length} NF${nfs.length > 1 ? "s" : ""}: ${nfs.map(n => `#${n.number}`).join(", ")}` : ""}
+          ${nfs.length && receipts.length ? " &nbsp;·&nbsp; " : ""}
+          ${receipts.length ? `📃 ${receipts.length} Recibo${receipts.length > 1 ? "s" : ""}` : ""}
+        </span>
         ${statusBadge(j)}
       </div>
       <div class="nf-job-title">${j.name}</div>
       <div class="nf-client">${clientDisplayName(j.client)}</div>
       <div class="nf-meta">
         <span>💰 ${valueInlineText(j)}</span>
-        <span>📅 Emissão: ${nfs.map(n => fmtDate(n.date)).join(", ")}</span>
+        ${nfs.length ? `<span>📅 NF: ${nfs.map(n => fmtDate(n.date)).join(", ")}</span>` : ""}
         <span>🗓️ Job: ${fmtJobDates(j)}</span>
       </div>
       <div class="nf-actions">
         ${nfs.filter(n => n.link).map(n => `<a href="${n.link}" target="_blank" class="btn-nf-link">🔗 NF #${n.number}</a>`).join("")}
-        ${nfs.filter(n => n.pdfUrl).map(n => `<button class="btn-nf-pdf" data-nfpage-pdf="${n.pdfUrl}">📄 PDF #${n.number}</button>`).join("")}
-        <button class="btn-nf-pdf" data-nfpage-edit="${j.id}">✏️ Gerenciar NFs</button>
+        ${nfs.filter(n => n.pdfUrl).map(n => `<button class="btn-nf-pdf" data-nfpage-pdf="${n.pdfUrl}">📄 NF #${n.number}</button>`).join("")}
+        ${receipts.filter(r => r.link).map(r => `<a href="${r.link}" target="_blank" class="btn-nf-link">🔗 Recibo${r.number ? " #" + r.number : ""}</a>`).join("")}
+        ${receipts.filter(r => r.pdfUrl).map(r => `<button class="btn-nf-pdf" data-nfpage-pdf="${r.pdfUrl}">📄 Recibo${r.number ? " #" + r.number : ""}</button>`).join("")}
+        ${nfs.length ? `<button class="btn-nf-pdf" data-nfpage-edit="${j.id}">✏️ Gerenciar NFs</button>` : ""}
+        ${receipts.length ? `<button class="btn-nf-pdf" data-nfpage-receipt="${j.id}">✏️ Gerenciar Recibos</button>` : ""}
       </div>`;
     container.appendChild(card);
   });
@@ -1860,6 +1957,9 @@ function renderNFPage() {
   });
   container.querySelectorAll("[data-nfpage-edit]").forEach(btn => {
     btn.addEventListener("click", () => openNFModal(btn.dataset.nfpageEdit));
+  });
+  container.querySelectorAll("[data-nfpage-receipt]").forEach(btn => {
+    btn.addEventListener("click", () => openReceiptModal(btn.dataset.nfpageReceipt));
   });
 }
 

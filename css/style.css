@@ -650,6 +650,13 @@ a:hover { color: var(--accent-light); }
   font-weight: 600;
   white-space: nowrap;
 }
+button.badge {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter .15s;
+}
+button.badge:hover { filter: brightness(1.25); }
 .badge-pendente { background: var(--yellow-dim); color: var(--yellow); }
 .badge-pendente_nf { background: var(--orange-dim); color: var(--orange); }
 .badge-pendente_recibo { background: var(--orange-dim); color: var(--orange); }

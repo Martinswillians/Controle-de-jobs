@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=34" />
+  <link rel="stylesheet" href="css/style.css?v=35" />
 </head>
 <body>
 
@@ -110,7 +110,7 @@
       <li><a href="#" class="nav-link active" data-page="dashboard">📊 Dashboard</a></li>
       <li><a href="#" class="nav-link" data-page="pending">⏰ Pendências <span id="pendingNavBadge" class="nav-badge hidden">0</span></a></li>
       <li><a href="#" class="nav-link" data-page="jobs">📋 Meus Jobs</a></li>
-      <li><a href="#" class="nav-link" data-page="nf">🧾 Notas Fiscais</a></li>
+      <li><a href="#" class="nav-link" data-page="nf">🧾 Notas Fiscais/Recibos</a></li>
       <li><a href="#" class="nav-link" data-page="reports">📈 Relatórios</a></li>
       <li><a href="#" class="nav-link" data-page="clients">🏢 Clientes</a></li>
       <li><a href="#" class="nav-link" data-page="mei">⚠️ Limite MEI</a></li>
@@ -302,9 +302,9 @@
           <option value="pago_recibo">📃 Pago + Recibo</option>
         </select>
         <select id="filterNF">
-          <option value="">Com/Sem NF</option>
-          <option value="com">Com NF</option>
-          <option value="sem">Sem NF</option>
+          <option value="">Com/Sem NF/Recibo</option>
+          <option value="com">Com NF/Recibo</option>
+          <option value="sem">Sem NF/Recibo</option>
         </select>
         <button class="btn-outline btn-sm" id="clearFilters">✕ Limpar</button>
         <button type="button" class="help-icon-btn" id="statusHelpBtnJobs" title="O que significa cada status?">❓</button>
@@ -341,13 +341,13 @@
     <!-- ─── NOTAS FISCAIS ─── -->
     <div id="page-nf" class="page">
       <div class="page-header">
-        <h2>Notas Fiscais</h2>
+        <h2>Notas Fiscais/Recibos</h2>
         <a href="https://www.nfse.gov.br" target="_blank" class="btn-outline">🏛️ Abrir Portal NFS-e</a>
       </div>
       <div id="nfList" class="nf-grid"></div>
       <div id="nfEmpty" class="empty-state hidden">
         <span>🧾</span>
-        <p>Nenhuma nota fiscal registrada.<br>Adicione uma nota a partir de um job.</p>
+        <p>Nenhuma nota fiscal ou recibo registrado.<br>Adicione a partir de um job.</p>
       </div>
     </div>
 
@@ -918,6 +918,24 @@
   </div>
 </div>
 
+<!-- DOCS VIEW MODAL (somente leitura — NF e/ou Recibo) -->
+<div id="docsViewModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3 id="docsViewTitle">Comprovantes</h3>
+      <button class="modal-close" id="closeDocsViewModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="color:var(--text2);font-size:13px;margin-bottom:14px" id="docsViewSubtitle"></div>
+      <div class="mode-toggle hidden" id="docsViewTabs" style="margin-bottom:14px"></div>
+      <div id="docsViewList" class="nf-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelDocsViewModal">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- IMPORT CLIENTS MODAL -->
 <div id="importClientsModal" class="modal-overlay hidden">
   <div class="modal modal-sm">
@@ -1030,9 +1048,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=34"></script>
-<script type="module" src="js/app.js?v=34"></script>
-<script type="module" src="js/clients.js?v=34"></script>
+<script type="module" src="js/firebase-config.js?v=35"></script>
+<script type="module" src="js/app.js?v=35"></script>
+<script type="module" src="js/clients.js?v=35"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

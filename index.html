@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=35" />
+  <link rel="stylesheet" href="css/style.css?v=36" />
 </head>
 <body>
 
@@ -253,10 +253,19 @@
         </select>
       </div>
 
+      <div class="bulk-bar hidden" id="bulkBarPending">
+        <span class="bulk-count" id="bulkCountPending">0 selecionados</span>
+        <div class="bulk-actions">
+          <button class="btn-primary btn-sm" id="bulkPayBtnPending">✅ Marcar como pago</button>
+          <button class="btn-outline btn-sm" id="bulkClearBtnPending">✕ Limpar seleção</button>
+        </div>
+      </div>
+
       <div class="table-wrap">
-        <table class="jobs-table" id="pendingTable">
+        <table class="jobs-table has-select" id="pendingTable">
           <thead>
             <tr>
+              <th class="col-select"><input type="checkbox" id="selectAllPending" title="Selecionar todos" /></th>
               <th>Data</th>
               <th>Job</th>
               <th>Cliente</th>
@@ -310,10 +319,20 @@
         <button type="button" class="help-icon-btn" id="statusHelpBtnJobs" title="O que significa cada status?">❓</button>
       </div>
 
+      <div class="bulk-bar hidden" id="bulkBar">
+        <span class="bulk-count" id="bulkCount">0 selecionados</span>
+        <div class="bulk-actions">
+          <button class="btn-primary btn-sm" id="bulkPayBtn">✅ Marcar como pago</button>
+          <button class="btn-outline btn-sm btn-danger" id="bulkDeleteBtn">🗑️ Excluir</button>
+          <button class="btn-outline btn-sm" id="bulkClearBtn">✕ Limpar seleção</button>
+        </div>
+      </div>
+
       <div class="table-wrap">
-        <table class="jobs-table" id="allJobsTable">
+        <table class="jobs-table has-select" id="allJobsTable">
           <thead>
             <tr>
+              <th class="col-select"><input type="checkbox" id="selectAllJobs" title="Selecionar todos" /></th>
               <th>Data</th>
               <th>Job</th>
               <th>Cliente</th>
@@ -575,6 +594,14 @@
         <button class="btn-primary" id="saveSettings">Salvar</button>
       </div>
       <div class="section-card">
+        <h3>Backup dos dados</h3>
+        <p class="section-hint">Baixe uma cópia completa dos seus dados (jobs, clientes, NFs, recibos, logs de exclusão e perfil) em um arquivo JSON. Guarde em um local seguro: o arquivo contém informações dos seus clientes.</p>
+        <div class="backup-actions">
+          <button class="btn-primary btn-sm" id="backupBtn">💾 Baixar backup completo</button>
+          <span class="backup-last" id="backupLast"></span>
+        </div>
+      </div>
+      <div class="section-card">
         <h3>Conta</h3>
         <button class="btn-outline btn-danger" id="logoutBtnSettings">Sair da conta</button>
       </div>
@@ -599,7 +626,28 @@
         <div class="field field-full">
           <label>Data(s) do Job * <span class="field-hint">— adicione mais de uma diária se o job durou vários dias</span></label>
           <div id="jobDatesList" class="job-dates-list"></div>
-          <button type="button" class="btn-outline btn-sm" id="addJobDateBtn">+ Adicionar diária</button>
+          <div class="date-add-actions">
+            <button type="button" class="btn-outline btn-sm" id="addJobDateBtn">+ Adicionar diária</button>
+            <button type="button" class="btn-outline btn-sm" id="toggleRangeBtn">📅 Adicionar intervalo</button>
+          </div>
+          <div class="date-range-panel hidden" id="dateRangePanel">
+            <div class="date-range-inputs">
+              <div class="field">
+                <label>De</label>
+                <input type="date" id="rangeFrom" />
+              </div>
+              <div class="field">
+                <label>Até</label>
+                <input type="date" id="rangeTo" />
+              </div>
+            </div>
+            <label class="checkbox-inline"><input type="checkbox" id="rangeSkipWeekends" /> Pular sábados e domingos</label>
+            <div class="date-range-preview" id="rangePreview"></div>
+            <div class="date-range-actions">
+              <button type="button" class="btn-outline btn-sm" id="rangeCancelBtn">Cancelar</button>
+              <button type="button" class="btn-primary btn-sm" id="rangeApplyBtn">Adicionar datas</button>
+            </div>
+          </div>
         </div>
         <div class="field field-full">
           <label>Tipo de Valor</label>
@@ -969,6 +1017,50 @@
   </div>
 </div>
 
+<!-- BULK PAY MODAL -->
+<div id="bulkPayModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Marcar como pago</h3>
+      <button class="modal-close" id="closeBulkPayModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="bulkPaySummary"></p>
+      <div class="field" style="margin-top:14px">
+        <label>Data do pagamento *</label>
+        <input type="date" id="bulkPayDate" />
+      </div>
+      <p class="section-hint" style="margin:0">Jobs com pagamento parcial serão marcados como pagos por completo. NFs e recibos já cadastrados são mantidos (o status vira "Pago + NF" ou "Pago + Recibo", conforme o caso).</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelBulkPay">Cancelar</button>
+      <button class="btn-primary" id="confirmBulkPay">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK DELETE MODAL -->
+<div id="bulkDeleteModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Excluir jobs selecionados</h3>
+      <button class="modal-close" id="closeBulkDeleteModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="bulkDeleteSummary"></div>
+      <div class="field field-full" style="margin-top:14px">
+        <label>Motivo da Exclusão *</label>
+        <textarea id="bulkDeleteReason" rows="3" placeholder="Ex: rascunhos duplicados, cadastros de teste..."></textarea>
+      </div>
+      <p class="section-hint" style="margin:0">Uma linha de log será registrada para cada job excluído.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelBulkDelete">Cancelar</button>
+      <button class="btn-primary btn-danger" id="confirmBulkDelete">Excluir</button>
+    </div>
+  </div>
+</div>
+
 <!-- STATUS LEGEND MODAL -->
 <div id="statusLegendModal" class="modal-overlay hidden">
   <div class="modal modal-sm">
@@ -1039,6 +1131,9 @@
   </div>
 </div>
 
+<!-- OFFLINE BANNER -->
+<div id="offlineBanner" class="offline-banner hidden">📡 Sem conexão — você pode continuar usando o app. As alterações ficam pendentes e serão enviadas quando a internet voltar. Não feche o app até lá.</div>
+
 <!-- TOAST -->
 <div id="toast" class="toast hidden"></div>
 
@@ -1048,9 +1143,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=35"></script>
-<script type="module" src="js/app.js?v=35"></script>
-<script type="module" src="js/clients.js?v=35"></script>
+<script type="module" src="js/firebase-config.js?v=36"></script>
+<script type="module" src="js/app.js?v=36"></script>
+<script type="module" src="js/clients.js?v=36"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

@@ -14,6 +14,15 @@ let editingClientId = null;
 
 const $ = id => document.getElementById(id);
 
+// Offline o Firestore só "responde" quando a internet volta; não travamos a tela esperando.
+async function fireWrite(promise) {
+  if (navigator.onLine === false) {
+    promise.catch(err => console.error("Escrita offline não pôde ser enviada:", err));
+    return;
+  }
+  await promise;
+}
+
 // ─────────────────────────────────────────────
 // SUBSCRIBE
 // ─────────────────────────────────────────────
@@ -225,11 +234,11 @@ export async function saveClient(uid, showToast, loading) {
   loading(true);
   try {
     if (editingClientId) {
-      await updateDoc(doc(db, "users", uid, "clients", editingClientId), data);
+      await fireWrite(updateDoc(doc(db, "users", uid, "clients", editingClientId), data));
       showToast("Cliente atualizado!");
     } else {
       data.createdAt = new Date();
-      await addDoc(collection(db, "users", uid, "clients"), data);
+      await fireWrite(addDoc(collection(db, "users", uid, "clients"), data));
       showToast("Cliente cadastrado!");
     }
     closeClientModal();
@@ -244,7 +253,7 @@ async function toggleClientStatus(clientId, currentStatus) {
   if (!uid) return;
   const newStatus = currentStatus === "inativo" ? "ativo" : "inativo";
   try {
-    await updateDoc(doc(db, "users", uid, "clients", clientId), { status: newStatus });
+    await fireWrite(updateDoc(doc(db, "users", uid, "clients", clientId), { status: newStatus }));
   } catch(e) { console.error(e); }
 }
 
@@ -253,7 +262,7 @@ async function confirmDeleteClient(clientId) {
   const uid = window._currentUid;
   if (!uid) return;
   try {
-    await deleteDoc(doc(db, "users", uid, "clients", clientId));
+    await fireWrite(deleteDoc(doc(db, "users", uid, "clients", clientId)));
   } catch(e) { console.error(e); }
 }
 

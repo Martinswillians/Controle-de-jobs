@@ -15,7 +15,7 @@ import {
 
 import {
   collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-  getDocs, getDoc, query, where, orderBy, onSnapshot
+  getDocs, getDoc, query, where, orderBy, onSnapshot, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
@@ -33,6 +33,15 @@ import {
 // ─────────────────────────────────────────────
 let currentUser = null;
 let currentUserName = "";
+
+// Seleção em massa (Meus Jobs / Pendências)
+const selectedJobIds = new Set();
+const BULK_UI = {
+  jobs:    { bar: "bulkBar",        count: "bulkCount",        all: "selectAllJobs",    body: "allJobsBody" },
+  pending: { bar: "bulkBarPending", count: "bulkCountPending", all: "selectAllPending", body: "pendingBody" }
+};
+const bulkVisibleJobs = { jobs: [], pending: [] };
+let jobDatesPristine = false; // true enquanto as datas de um job novo ainda são só a data padrão (hoje)
 let allJobs = [];
 let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
@@ -50,6 +59,32 @@ const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
 // UTILS
 // ─────────────────────────────────────────────
 const $ = id => document.getElementById(id);
+
+// ─────────────────────────────────────────────
+// CONEXÃO / ESCRITAS OFFLINE
+// ─────────────────────────────────────────────
+// Sem conexão, o Firestore guarda a escrita em memória e só "responde" quando a internet volta.
+// Se esperássemos essa resposta, a tela ficaria travada em "carregando". Por isso, offline, não
+// aguardamos a confirmação: a alteração já aparece na tela (cache local) e é enviada ao servidor
+// automaticamente quando a conexão voltar — desde que o app continue aberto.
+async function fireWrite(promise) {
+  if (navigator.onLine === false) {
+    promise.catch(err => console.error("Escrita offline não pôde ser enviada:", err));
+    return;
+  }
+  await promise;
+}
+
+function updateOnlineStatus() {
+  const banner = document.getElementById("offlineBanner");
+  if (banner) banner.classList.toggle("hidden", navigator.onLine !== false);
+}
+window.addEventListener("offline", updateOnlineStatus);
+window.addEventListener("online", () => {
+  updateOnlineStatus();
+  showToast("✅ Conexão restabelecida — enviando alterações pendentes.");
+});
+updateOnlineStatus();
 
 // Registra um listener com segurança: se o elemento não existir na página (ex: divergência
 // entre versões de index.html/app.js em cache), avisa no console em vez de derrubar todo o
@@ -475,6 +510,7 @@ on("saveSettings", "click", async () => {
 // NAVIGATION
 // ─────────────────────────────────────────────
 function navigateTo(page) {
+  selectedJobIds.clear();
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-link").forEach(l => l.classList.remove("active"));
   $(`page-${page}`)?.classList.add("active");
@@ -488,6 +524,7 @@ function navigateTo(page) {
   else if (page === "reports") renderReports();
   else if (page === "mei") renderMEI();
   else if (page === "logs") renderLogsPage();
+  else if (page === "settings") updateBackupLabel();
   else if (page === "clients") {} // rendered by clients.js listener
   else if (page === "admin") {} // rendered by access.js
 }
@@ -564,6 +601,258 @@ function updatePendingNavBadge() {
 }
 
 // ─────────────────────────────────────────────
+// AÇÕES EM MASSA (seleção múltipla)
+// ─────────────────────────────────────────────
+const plural = (n, one, many) => (n === 1 ? one : many);
+const escHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function selectedJobs() { return allJobs.filter(j => selectedJobIds.has(j.id)); }
+
+function bindSelection(tbody, visibleJobs, page) {
+  bulkVisibleJobs[page] = visibleJobs;
+  // Só mantém selecionado o que está visível (evita agir em jobs escondidos pelos filtros)
+  const visibleIds = new Set(visibleJobs.map(j => j.id));
+  [...selectedJobIds].forEach(id => { if (!visibleIds.has(id)) selectedJobIds.delete(id); });
+
+  tbody.querySelectorAll(".col-select").forEach(td => td.addEventListener("click", e => e.stopPropagation()));
+  tbody.querySelectorAll(".job-select").forEach(cb => {
+    cb.checked = selectedJobIds.has(cb.dataset.id);
+    cb.addEventListener("change", () => {
+      if (cb.checked) selectedJobIds.add(cb.dataset.id); else selectedJobIds.delete(cb.dataset.id);
+      updateBulkBar(page);
+    });
+  });
+
+  const all = $(BULK_UI[page].all);
+  all.onchange = () => {
+    visibleJobs.forEach(j => { if (all.checked) selectedJobIds.add(j.id); else selectedJobIds.delete(j.id); });
+    tbody.querySelectorAll(".job-select").forEach(cb => { cb.checked = selectedJobIds.has(cb.dataset.id); });
+    updateBulkBar(page);
+  };
+  updateBulkBar(page);
+}
+
+function updateBulkBar(page) {
+  const ui = BULK_UI[page];
+  const visible = bulkVisibleJobs[page] || [];
+  const sel = visible.filter(j => selectedJobIds.has(j.id));
+  const n = sel.length;
+  const pend = sel.reduce((a, j) => a + pendingAmountOf(j), 0);
+  $(ui.bar).classList.toggle("hidden", n === 0);
+  $(ui.count).textContent = `${n} ${plural(n, "selecionado", "selecionados")}${pend > 0 ? ` · pendente ${fmt(pend)}` : ""}`;
+  const all = $(ui.all);
+  all.checked = visible.length > 0 && n === visible.length;
+  all.indeterminate = n > 0 && n < visible.length;
+}
+
+function clearSelection(page) {
+  selectedJobIds.clear();
+  document.querySelectorAll(`#${BULK_UI[page].body} .job-select`).forEach(cb => { cb.checked = false; });
+  updateBulkBar(page);
+}
+
+// Grava em lotes (limite do Firestore: 500 operações por batch)
+async function commitInChunks(list, applyFn, opsPerItem = 1) {
+  const size = Math.max(1, Math.floor(400 / opsPerItem));
+  for (let i = 0; i < list.length; i += size) {
+    const batch = writeBatch(db);
+    list.slice(i, i + size).forEach(item => applyFn(batch, item));
+    await fireWrite(batch.commit());
+  }
+}
+
+// Status "pago" correspondente, preservando o tipo de documento já emitido
+function paidStatusFor(j) {
+  if (j.status === "pendente") return "pago";
+  if (j.status === "pendente_nf") return nfsArray(j).some(n => n.pdfUrl) ? "pago_nf_pdf" : "pago_nf";
+  if (j.status === "pendente_recibo") return "pago_recibo";
+  return j.status; // já estava em um status "pago"
+}
+
+// ── Marcar como pago
+function openBulkPayModal() {
+  const jobs = selectedJobs().filter(j => pendingAmountOf(j) > 0);
+  if (!jobs.length) return showToast("Nenhum job selecionado tem valor pendente.", "error");
+  const total = jobs.reduce((a, j) => a + pendingAmountOf(j), 0);
+  $("bulkPaySummary").innerHTML =
+    `<strong>${jobs.length}</strong> ${plural(jobs.length, "job será marcado como pago", "jobs serão marcados como pagos")} · valor a receber: <strong>${fmt(total)}</strong>.`;
+  $("bulkPayDate").value = today();
+  $("bulkPayModal").classList.remove("hidden");
+}
+function closeBulkPayModal() { $("bulkPayModal").classList.add("hidden"); }
+on("bulkPayBtn", "click", openBulkPayModal);
+on("bulkPayBtnPending", "click", openBulkPayModal);
+on("closeBulkPayModal", "click", closeBulkPayModal);
+on("cancelBulkPay", "click", closeBulkPayModal);
+
+on("confirmBulkPay", "click", async () => {
+  const date = $("bulkPayDate").value;
+  if (!date) return showToast("Informe a data do pagamento.", "error");
+  const jobs = selectedJobs().filter(j => pendingAmountOf(j) > 0);
+  if (!jobs.length) { closeBulkPayModal(); return; }
+  if (!currentUser) return showToast("Sessão expirada. Faça login novamente.", "error");
+
+  loading(true);
+  try {
+    const uid = currentUser.uid;
+    await commitInChunks(jobs, (batch, j) => {
+      batch.update(doc(db, "users", uid, "jobs", j.id), {
+        status: paidStatusFor(j),
+        paymentType: "total",
+        paidAmount: Number(j.value || 0),
+        payDate: date,
+        updatedAt: new Date()
+      });
+    });
+    selectedJobIds.clear();
+    closeBulkPayModal();
+    showToast(`${jobs.length} ${plural(jobs.length, "job marcado como pago", "jobs marcados como pagos")}!`);
+    refreshAllViews();
+  } catch (e) {
+    console.error(e);
+    showToast("Erro ao marcar como pago.", "error");
+  } finally { loading(false); }
+});
+
+// ── Excluir vários (exige motivo e registra um log por job)
+function openBulkDeleteModal() {
+  const jobs = selectedJobs();
+  if (!jobs.length) return;
+  const names = jobs.slice(0, 5).map(j => `• ${escHtml(j.name)}`).join("<br>");
+  const more = jobs.length > 5 ? `<br>… e mais ${jobs.length - 5}` : "";
+  $("bulkDeleteSummary").innerHTML =
+    `Você vai excluir <strong>${jobs.length}</strong> ${plural(jobs.length, "job", "jobs")}. Esta ação não pode ser desfeita.<div class="bulk-delete-list">${names}${more}</div>`;
+  $("bulkDeleteReason").value = "";
+  $("bulkDeleteModal").classList.remove("hidden");
+}
+function closeBulkDeleteModal() { $("bulkDeleteModal").classList.add("hidden"); }
+on("bulkDeleteBtn", "click", openBulkDeleteModal);
+on("closeBulkDeleteModal", "click", closeBulkDeleteModal);
+on("cancelBulkDelete", "click", closeBulkDeleteModal);
+on("bulkClearBtn", "click", () => clearSelection("jobs"));
+on("bulkClearBtnPending", "click", () => clearSelection("pending"));
+
+on("confirmBulkDelete", "click", async () => {
+  const reason = $("bulkDeleteReason").value.trim();
+  if (!reason) return showToast("Informe o motivo da exclusão.", "error");
+  const jobs = selectedJobs();
+  if (!jobs.length) { closeBulkDeleteModal(); return; }
+  if (!currentUser) return showToast("Sessão expirada. Faça login novamente.", "error");
+
+  loading(true);
+  try {
+    const uid = currentUser.uid;
+    await commitInChunks(jobs, (batch, j) => {
+      // Log ANTES/junto da exclusão, no mesmo lote, para preservar os dados do job
+      batch.set(doc(collection(db, "users", uid, "deleteLogs")), {
+        entityType: "job",
+        jobId: j.id,
+        jobName: j.name || "",
+        jobClient: j.client || "",
+        jobValue: j.value || 0,
+        jobDates: jobDatesArray(j),
+        reason,
+        bulk: true,
+        bulkCount: jobs.length,
+        userEmail: currentUser.email || "",
+        userName: currentUserName || "",
+        deletedAt: new Date()
+      });
+      batch.delete(doc(db, "users", uid, "jobs", j.id));
+    }, 2);
+    selectedJobIds.clear();
+    closeBulkDeleteModal();
+    showToast(`${jobs.length} ${plural(jobs.length, "job excluído", "jobs excluídos")} e registrado${plural(jobs.length, "", "s")} no log.`);
+    refreshAllViews();
+  } catch (e) {
+    console.error(e);
+    showToast("Erro ao excluir os jobs.", "error");
+  } finally { loading(false); }
+});
+
+// ─────────────────────────────────────────────
+// BACKUP COMPLETO (JSON)
+// ─────────────────────────────────────────────
+const BACKUP_KEY = "cdj_last_backup";
+
+function updateBackupLabel() {
+  const el = $("backupLast");
+  if (!el) return;
+  let iso = null;
+  try { iso = localStorage.getItem(BACKUP_KEY); } catch (e) { /* storage indisponível */ }
+  if (!iso) { el.textContent = "Nenhum backup baixado neste dispositivo ainda."; return; }
+  const d = new Date(iso);
+  el.textContent = `Último backup neste dispositivo: ${d.toLocaleDateString("pt-BR")} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+// Converte Timestamps do Firestore em texto ISO no arquivo
+function backupReplacer(key, value) {
+  const original = this[key];
+  if (original && typeof original.toDate === "function") return original.toDate().toISOString();
+  return value;
+}
+
+on("backupBtn", "click", async () => {
+  if (!currentUser) return showToast("Sessão expirada. Faça login novamente.", "error");
+  loading(true);
+  try {
+    const uid = currentUser.uid;
+    const avisos = [];
+
+    let perfil = null;
+    try {
+      const snap = await getDoc(doc(db, "users", uid));
+      if (snap.exists()) perfil = snap.data();
+    } catch (e) { console.warn(e); avisos.push("Não foi possível ler o perfil."); }
+
+    let logsExclusao = [];
+    try {
+      const snap = await getDocs(query(collection(db, "users", uid, "deleteLogs"), orderBy("deletedAt", "desc")));
+      logsExclusao = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.warn(e); avisos.push("Não foi possível ler os logs de exclusão."); }
+
+    const backup = {
+      meta: {
+        app: "Controle de Job",
+        formato: 1,
+        exportadoEm: new Date().toISOString(),
+        usuario: { uid, email: currentUser.email || "", nome: currentUserName || "" },
+        totais: {
+          jobs: allJobs.length,
+          clientes: allClients.length,
+          notasFiscais: allJobs.reduce((a, j) => a + nfsArray(j).length, 0),
+          recibos: allJobs.reduce((a, j) => a + receiptsArray(j).length, 0),
+          logsExclusao: logsExclusao.length
+        },
+        avisos
+      },
+      perfil,
+      jobs: allJobs,
+      clientes: allClients,
+      logsExclusao
+    };
+
+    const json = JSON.stringify(backup, backupReplacer, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `backup-controle-de-job-${today()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    try { localStorage.setItem(BACKUP_KEY, new Date().toISOString()); } catch (e) { /* ignora */ }
+    updateBackupLabel();
+    showToast(`Backup baixado: ${allJobs.length} jobs e ${allClients.length} clientes.`);
+  } catch (e) {
+    console.error(e);
+    showToast("Erro ao gerar o backup.", "error");
+  } finally { loading(false); }
+});
+
+// ─────────────────────────────────────────────
 // PENDÊNCIAS — todos os jobs com valor ainda a receber
 // ─────────────────────────────────────────────
 function renderPendingPage() {
@@ -591,6 +880,7 @@ function renderPendingPage() {
     const tr = document.createElement("tr");
     tr.classList.add("clickable-row");
     tr.innerHTML = `
+      <td class="col-select"><input type="checkbox" class="job-select" data-id="${j.id}" /></td>
       <td class="job-date">${fmtJobDates(j)}</td>
       <td><div class="job-name">${j.name}</div></td>
       <td><div class="job-client">${clientDisplayName(j.client)}</div></td>
@@ -609,6 +899,7 @@ function renderPendingPage() {
   });
 
   bindRowActions(tbody);
+  bindSelection(tbody, pending, "pending");
 }
 
 on("pendingSort", "change", renderPendingPage);
@@ -759,6 +1050,7 @@ function renderJobsPage() {
     const tr = document.createElement("tr");
     tr.classList.add("clickable-row");
     tr.innerHTML = `
+      <td class="col-select"><input type="checkbox" class="job-select" data-id="${j.id}" /></td>
       <td class="job-date">${fmtJobDates(j)}</td>
       <td><div class="job-name">${j.name}</div><div class="job-client">${clientDisplayName(j.client)}</div></td>
       <td>${clientDisplayName(j.client)}</td>
@@ -779,6 +1071,7 @@ function renderJobsPage() {
   });
 
   bindRowActions(tbody);
+  bindSelection(tbody, jobs, "jobs");
 }
 
 function populateFilterClients() {
@@ -858,6 +1151,8 @@ let jobPaymentType = "total"; // "total" | "parcial"
 
 function openJobModal(jobId = null) {
   editingJobId = jobId;
+  jobDatesPristine = !jobId;
+  resetRangePanel();
   $("jobModalTitle").textContent = jobId ? "Editar Job" : "Novo Job";
 
   if (jobId) {
@@ -905,6 +1200,8 @@ function duplicateJob(jobId) {
 
   editingJobId = null;
   $("jobModalTitle").textContent = "Novo Job (duplicado)";
+  jobDatesPristine = true;
+  resetRangePanel();
 
   jobModalDates = [today()];
   jobModalHours = {};
@@ -998,6 +1295,7 @@ function renderJobDateRows() {
     inp.addEventListener("change", e => {
       const idx = parseInt(e.target.dataset.idx, 10);
       const oldDate = jobModalDates[idx];
+      jobDatesPristine = false;
       const newDate = e.target.value;
       if (jobPricingMode === "hora" && oldDate in jobModalHours) {
         jobModalHours[newDate] = jobModalHours[oldDate];
@@ -1020,6 +1318,7 @@ function renderJobDateRows() {
       if (jobModalDates.length <= 1) return;
       const idx = parseInt(btn.dataset.idx, 10);
       const [removed] = jobModalDates.splice(idx, 1);
+      jobDatesPristine = false;
       delete jobModalHours[removed];
       renderJobDateRows();
       recalcJobValue();
@@ -1028,6 +1327,7 @@ function renderJobDateRows() {
 }
 
 on("addJobDateBtn", "click", () => {
+  jobDatesPristine = false;
   const last = jobModalDates[jobModalDates.length - 1];
   let next = today();
   if (last) {
@@ -1038,6 +1338,87 @@ on("addJobDateBtn", "click", () => {
   jobModalDates.push(next);
   renderJobDateRows();
   recalcJobValue();
+});
+
+// ─────────────────────────────────────────────
+// INTERVALO DE DATAS (adiciona várias diárias de uma vez)
+// ─────────────────────────────────────────────
+const MAX_RANGE_DAYS = 62;
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseYMD = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDaysLocal = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
+
+function rangeSpanDays(from, to) {
+  return Math.round((parseYMD(to) - parseYMD(from)) / 86400000) + 1;
+}
+
+function computeRangeDates(from, to, skipWeekends) {
+  if (!from || !to) return [];
+  const span = rangeSpanDays(from, to);
+  if (span < 1 || span > MAX_RANGE_DAYS) return [];
+  const out = [];
+  const start = parseYMD(from);
+  for (let i = 0; i < span; i++) {
+    const d = addDaysLocal(start, i);
+    const dow = d.getDay();
+    if (skipWeekends && (dow === 0 || dow === 6)) continue;
+    out.push(ymd(d));
+  }
+  return out;
+}
+
+function resetRangePanel() {
+  const panel = $("dateRangePanel");
+  if (panel) panel.classList.add("hidden");
+}
+
+function updateRangePreview() {
+  const from = $("rangeFrom").value, to = $("rangeTo").value;
+  const box = $("rangePreview");
+  box.classList.remove("warn");
+  if (!from || !to) { box.textContent = ""; return; }
+  const span = rangeSpanDays(from, to);
+  if (span < 1) { box.classList.add("warn"); box.textContent = "⚠️ A data final é anterior à data inicial."; return; }
+  if (span > MAX_RANGE_DAYS) { box.classList.add("warn"); box.textContent = `⚠️ Intervalo muito longo (máximo ${MAX_RANGE_DAYS} dias).`; return; }
+  const dates = computeRangeDates(from, to, $("rangeSkipWeekends").checked);
+  if (!dates.length) { box.classList.add("warn"); box.textContent = "Nenhum dia no intervalo (só fins de semana?)."; return; }
+  box.textContent = `${dates.length} diária${dates.length > 1 ? "s" : ""}: ${fmtDate(dates[0])} → ${fmtDate(dates[dates.length - 1])}`;
+}
+
+on("toggleRangeBtn", "click", () => {
+  const panel = $("dateRangePanel");
+  const opening = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden", !opening);
+  if (!opening) return;
+  const dates = jobModalDates.filter(Boolean).sort();
+  const from = (jobDatesPristine || !dates.length) ? today() : ymd(addDaysLocal(parseYMD(dates[dates.length - 1]), 1));
+  $("rangeFrom").value = from;
+  $("rangeTo").value = "";
+  $("rangeSkipWeekends").checked = false;
+  updateRangePreview();
+});
+on("rangeFrom", "change", updateRangePreview);
+on("rangeTo", "change", updateRangePreview);
+on("rangeSkipWeekends", "change", updateRangePreview);
+on("rangeCancelBtn", "click", resetRangePanel);
+
+on("rangeApplyBtn", "click", () => {
+  const from = $("rangeFrom").value, to = $("rangeTo").value;
+  if (!from || !to) return showToast("Informe a data inicial e a final.", "error");
+  const span = rangeSpanDays(from, to);
+  if (span < 1) return showToast("A data final é anterior à data inicial.", "error");
+  if (span > MAX_RANGE_DAYS) return showToast(`Intervalo muito longo (máximo ${MAX_RANGE_DAYS} dias).`, "error");
+  const dates = computeRangeDates(from, to, $("rangeSkipWeekends").checked);
+  if (!dates.length) return showToast("Nenhum dia no intervalo escolhido.", "error");
+
+  // Job novo com só a data padrão (hoje): o intervalo substitui; senão, soma às datas existentes
+  const base = jobDatesPristine ? [] : jobModalDates.filter(Boolean);
+  jobModalDates = [...new Set([...base, ...dates])].sort();
+  jobDatesPristine = false;
+  resetRangePanel();
+  renderJobDateRows();
+  recalcJobValue();
+  showToast(`${dates.length} diária${dates.length > 1 ? "s" : ""} adicionada${dates.length > 1 ? "s" : ""}.`);
 });
 
 function closeJobModal() {
@@ -1144,11 +1525,11 @@ on("saveJobBtn", "click", async () => {
       updatedAt: new Date()
     };
     if (editingJobId) {
-      await updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data);
+      await fireWrite(updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data));
       showToast("Job atualizado!");
     } else {
       data.createdAt = new Date();
-      await addDoc(collection(db, "users", currentUser.uid, "jobs"), data);
+      await fireWrite(addDoc(collection(db, "users", currentUser.uid, "jobs"), data));
       showToast("Job adicionado!");
     }
     closeJobModal();
@@ -1210,7 +1591,7 @@ on("confirmDelete", "click", async () => {
   loading(true);
   try {
     // Registra o log ANTES de excluir, para preservar os dados do job excluído
-    await addDoc(collection(db, "users", currentUser.uid, "deleteLogs"), {
+    await fireWrite(addDoc(collection(db, "users", currentUser.uid, "deleteLogs"), {
       entityType: "job",
       jobId: deletingJobId,
       jobName: job?.name || "",
@@ -1221,9 +1602,9 @@ on("confirmDelete", "click", async () => {
       userEmail: currentUser.email || "",
       userName: currentUserName || "",
       deletedAt: new Date()
-    });
+    }));
 
-    await deleteDoc(doc(db, "users", currentUser.uid, "jobs", deletingJobId));
+    await fireWrite(deleteDoc(doc(db, "users", currentUser.uid, "jobs", deletingJobId)));
     showToast("Job excluído e registrado no log.");
     closeDeleteModalFn();
   } catch (e) {
@@ -1568,7 +1949,7 @@ on("saveNFBtn", "click", async () => {
     }
 
     const payDateFinal = isPendingChoice ? "" : (j.payDate || today());
-    await updateDoc(doc(db, "users", currentUser.uid, "jobs", nfTargetJobId), {
+    await fireWrite(updateDoc(doc(db, "users", currentUser.uid, "jobs", nfTargetJobId), {
       nfs: finalNFs,
       nf: null,
       status: newStatus,
@@ -1576,7 +1957,7 @@ on("saveNFBtn", "click", async () => {
       paidAmount,
       payDate: payDateFinal,
       updatedAt: new Date()
-    });
+    }));
 
     // Atualiza a cópia local imediatamente (evita reabrir o modal com dados desatualizados
     // antes do listener do Firestore sincronizar de volta)
@@ -1886,7 +2267,7 @@ on("saveReceiptBtn", "click", async () => {
     }
 
     const payDateFinal = isPendingChoice ? "" : (j.payDate || today());
-    await updateDoc(doc(db, "users", currentUser.uid, "jobs", receiptTargetJobId), {
+    await fireWrite(updateDoc(doc(db, "users", currentUser.uid, "jobs", receiptTargetJobId), {
       receipts: finalReceipts,
       receipt: null,
       status: newStatus,
@@ -1894,7 +2275,7 @@ on("saveReceiptBtn", "click", async () => {
       paidAmount,
       payDate: payDateFinal,
       updatedAt: new Date()
-    });
+    }));
 
     const idx = allJobs.findIndex(x => x.id === receiptTargetJobId);
     if (idx !== -1) {

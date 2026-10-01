@@ -12,7 +12,15 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=36" />
+  <link rel="stylesheet" href="css/style.css?v=37" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("cdj_theme");
+        if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+      } catch (e) { /* localStorage indisponível */ }
+    })();
+  </script>
 </head>
 <body>
 
@@ -93,6 +101,7 @@
     </div>
     <div class="topbar-right">
       <span id="userNameDisplay" class="user-name"></span>
+      <button class="btn-icon theme-toggle-btn" id="themeToggleBtn" title="Alternar tema claro/escuro">🌙</button>
       <button class="btn-icon" id="logoutBtn" title="Sair">⏻</button>
     </div>
   </header>
@@ -594,6 +603,13 @@
         <button class="btn-primary" id="saveSettings">Salvar</button>
       </div>
       <div class="section-card">
+        <h3>Aparência</h3>
+        <div class="mode-toggle" id="themeModeToggle">
+          <button type="button" class="mode-btn" data-theme-choice="dark">🌙 Escuro</button>
+          <button type="button" class="mode-btn" data-theme-choice="light">☀️ Claro</button>
+        </div>
+      </div>
+      <div class="section-card">
         <h3>Backup dos dados</h3>
         <p class="section-hint">Baixe uma cópia completa dos seus dados (jobs, clientes, NFs, recibos, logs de exclusão e perfil) em um arquivo JSON. Guarde em um local seguro: o arquivo contém informações dos seus clientes.</p>
         <div class="backup-actions">
@@ -622,6 +638,13 @@
       <button class="modal-close" id="closeJobModal">✕</button>
     </div>
     <div class="modal-body">
+      <div id="jobDraftBanner" class="draft-banner hidden">
+        <span id="jobDraftBannerText"></span>
+        <div class="draft-banner-actions">
+          <button type="button" class="btn-outline btn-sm" id="jobDraftDiscardBtn">Descartar</button>
+          <button type="button" class="btn-primary btn-sm" id="jobDraftRestoreBtn">Restaurar</button>
+        </div>
+      </div>
       <div class="form-grid">
         <div class="field field-full">
           <label>Data(s) do Job * <span class="field-hint">— adicione mais de uma diária se o job durou vários dias</span></label>
@@ -713,6 +736,7 @@
       </div>
     </div>
     <div class="modal-footer">
+      <span class="draft-status" id="jobDraftStatus"></span>
       <button class="btn-outline" id="cancelJobModal">Cancelar</button>
       <button class="btn-primary" id="saveJobBtn">Salvar</button>
     </div>
@@ -1143,9 +1167,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=36"></script>
-<script type="module" src="js/app.js?v=36"></script>
-<script type="module" src="js/clients.js?v=36"></script>
+<script type="module" src="js/firebase-config.js?v=37"></script>
+<script type="module" src="js/app.js?v=37"></script>
+<script type="module" src="js/clients.js?v=37"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

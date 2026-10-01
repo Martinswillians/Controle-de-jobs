@@ -132,8 +132,90 @@ function showToast(msg, type = "success", ms = 3000) {
   t._timer = setTimeout(() => t.classList.add("hidden"), ms);
 }
 
+// ─────────────────────────────────────────────
+// TEMA CLARO / ESCURO
+// ─────────────────────────────────────────────
+const THEME_KEY = "cdj_theme";
+
+function getTheme() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme) {
+  if (theme === "light") document.documentElement.setAttribute("data-theme", "light");
+  else document.documentElement.removeAttribute("data-theme");
+
+  const btn = $("themeToggleBtn");
+  if (btn) btn.textContent = theme === "light" ? "☀️" : "🌙";
+
+  $("themeModeToggle")?.querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.themeChoice === theme);
+  });
+
+  try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* localStorage indisponível */ }
+}
+
+function toggleTheme() { applyTheme(getTheme() === "light" ? "dark" : "light"); }
+
+// ─────────────────────────────────────────────
+// ATALHOS DE TECLADO
+// ─────────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  // Ignora combinações com Ctrl/Cmd/Alt (não interferir em atalhos do navegador)
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const active = document.activeElement;
+  const typing = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT" || active.isContentEditable);
+
+  // Esc sempre fecha o modal visível, mesmo durante digitação
+  if (e.key === "Escape") {
+    const openModal = document.querySelector(".modal-overlay:not(.hidden)");
+    if (openModal) {
+      e.preventDefault();
+      openModal.querySelector(".modal-close")?.click();
+    }
+    return;
+  }
+
+  if (typing) return; // demais atalhos ficam fora enquanto o usuário digita
+
+  if (document.querySelector(".modal-overlay:not(.hidden)")) return; // não abrir nada por cima de um modal
+
+  if (e.key === "n" || e.key === "N") {
+    e.preventDefault();
+    openJobModal();
+  } else if (e.key === "/") {
+    const search = $("searchJobs");
+    if (search && document.getElementById("page-jobs")?.classList.contains("active")) {
+      e.preventDefault();
+      search.focus();
+    }
+  }
+});
+
+on("themeToggleBtn", "click", toggleTheme);
+$("themeModeToggle")?.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => applyTheme(btn.dataset.themeChoice));
+});
+applyTheme(getTheme()); // sincroniza os botões com o tema já aplicado no <head>
+
 function loading(show) {
   $("loadingOverlay").classList.toggle("hidden", !show);
+}
+
+// Mesmos textos de statusLabel(), sem emoji — o motor de fontes do jsPDF não
+// renderiza emoji (viravam símbolos/texto espaçado estranho no PDF exportado).
+function statusLabelPlain(s) {
+  const map = {
+    pendente: "Pendente",
+    pendente_nf: "Pendente + NF",
+    pendente_recibo: "Pendente + Recibo",
+    pago: "Pago",
+    pago_nf: "Pago + NF",
+    pago_nf_pdf: "Pago + NF + PDF",
+    pago_recibo: "Pago + Recibo"
+  };
+  return map[s] || s;
 }
 
 function statusLabel(s) {
@@ -1190,6 +1272,7 @@ function openJobModal(jobId = null) {
   setPaymentType(jobPaymentType);
   togglePayDateField();
   $("jobModal").classList.remove("hidden");
+  checkJobDraft();
 }
 
 // Duplica um job existente: copia nome, cliente, tipo de valor e observações,
@@ -1421,6 +1504,110 @@ on("rangeApplyBtn", "click", () => {
   showToast(`${dates.length} diária${dates.length > 1 ? "s" : ""} adicionada${dates.length > 1 ? "s" : ""}.`);
 });
 
+// ─────────────────────────────────────────────
+// RASCUNHO AUTOMÁTICO DO MODAL DE JOB
+// Guardado só no navegador (localStorage) — nunca é enviado ao Firestore.
+// Serve para recuperar o que foi digitado se a aba fechar sem salvar.
+// ─────────────────────────────────────────────
+function jobDraftKey() { return `cdj_job_draft_${editingJobId || "new"}`; }
+
+function captureJobDraftData() {
+  return {
+    savedAt: Date.now(),
+    dates: jobModalDates,
+    hours: jobModalHours,
+    pricingMode: jobPricingMode,
+    paymentType: jobPaymentType,
+    name: $("jobName").value,
+    client: $("jobClient").value,
+    rate: $("jobRate").value,
+    value: $("jobValue").value,
+    notes: $("jobNotes").value,
+    status: $("jobStatus").value,
+    payDate: $("jobPayDate").value,
+    paidAmount: $("jobPaidAmount").value
+  };
+}
+
+function saveJobDraft() {
+  if (!$("jobModal") || $("jobModal").classList.contains("hidden")) return;
+  try {
+    const draft = captureJobDraftData();
+    localStorage.setItem(jobDraftKey(), JSON.stringify(draft));
+    const t = new Date(draft.savedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    $("jobDraftStatus").textContent = `💾 Rascunho salvo às ${t}`;
+  } catch (e) { /* localStorage indisponível/cheio — não bloqueia o uso do app */ }
+}
+
+let jobDraftDebounce = null;
+function scheduleJobDraftSave() {
+  clearTimeout(jobDraftDebounce);
+  jobDraftDebounce = setTimeout(saveJobDraft, 800);
+}
+
+function clearJobDraft() {
+  try { localStorage.removeItem(jobDraftKey()); } catch (e) { /* ignora */ }
+  $("jobDraftStatus").textContent = "";
+}
+
+function checkJobDraft() {
+  $("jobDraftBanner").classList.add("hidden");
+  let raw;
+  try { raw = localStorage.getItem(jobDraftKey()); } catch (e) { return; }
+  if (!raw) return;
+
+  let draft;
+  try { draft = JSON.parse(raw); } catch (e) { return; }
+  if (!draft?.savedAt || Date.now() - draft.savedAt > 1000 * 60 * 60 * 24 * 3) {
+    clearJobDraft(); // rascunho com mais de 3 dias: descarta silenciosamente
+    return;
+  }
+
+  const t = new Date(draft.savedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  $("jobDraftBannerText").textContent = `📝 Encontramos um rascunho não salvo de ${t}.`;
+  $("jobDraftBanner").dataset.draft = raw;
+  $("jobDraftBanner").classList.remove("hidden");
+}
+
+function restoreJobDraft(draft) {
+  jobModalDates = draft.dates?.length ? draft.dates : [today()];
+  jobModalHours = draft.hours || {};
+  jobPricingMode = draft.pricingMode || "fixo";
+  jobPaymentType = draft.paymentType || "total";
+  $("jobName").value = draft.name || "";
+  $("jobClient").value = draft.client || "";
+  $("jobRate").value = draft.rate || "";
+  $("jobValue").value = draft.value || "";
+  $("jobNotes").value = draft.notes || "";
+  $("jobStatus").value = draft.status || "pendente";
+  $("jobPayDate").value = draft.payDate || "";
+  $("jobPaidAmount").value = draft.paidAmount || "";
+
+  setPricingMode(jobPricingMode);
+  setPaymentType(jobPaymentType);
+  togglePayDateField();
+}
+
+on("jobDraftRestoreBtn", "click", () => {
+  const raw = $("jobDraftBanner").dataset.draft;
+  if (!raw) return;
+  try {
+    restoreJobDraft(JSON.parse(raw));
+    showToast("Rascunho restaurado.");
+  } catch (e) {
+    showToast("Não foi possível restaurar o rascunho.", "error");
+  }
+  $("jobDraftBanner").classList.add("hidden");
+});
+on("jobDraftDiscardBtn", "click", () => {
+  clearJobDraft();
+  $("jobDraftBanner").classList.add("hidden");
+});
+
+// Captura qualquer digitação dentro do modal (delegado — funciona também nas linhas de data criadas depois)
+$("jobModal")?.addEventListener("input", scheduleJobDraftSave);
+$("jobModal")?.addEventListener("change", scheduleJobDraftSave);
+
 function closeJobModal() {
   $("jobModal").classList.add("hidden");
   editingJobId = null;
@@ -1526,10 +1713,12 @@ on("saveJobBtn", "click", async () => {
     };
     if (editingJobId) {
       await fireWrite(updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data));
+      clearJobDraft();
       showToast("Job atualizado!");
     } else {
       data.createdAt = new Date();
       await fireWrite(addDoc(collection(db, "users", currentUser.uid, "jobs"), data));
+      clearJobDraft();
       showToast("Job adicionado!");
     }
     closeJobModal();
@@ -2590,7 +2779,7 @@ on("repExportPDF", "click", () => {
   doc.autoTable({
     startY: 28,
     head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
-    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabel(j.status)]),
+    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)]),
     foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [124,106,247] },
@@ -2729,7 +2918,7 @@ on("exportPDF", "click", () => {
   doc.autoTable({
     startY: 28,
     head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
-    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabel(j.status)]),
+    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)]),
     foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
     styles: { fontSize: 9 },
     headStyles: { fillColor: [124,106,247] },

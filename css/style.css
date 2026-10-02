@@ -1718,38 +1718,50 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
    é o que garante contraste de texto suficiente sobre o fundo "-dim" claro.
 ══════════════════════════════════════════ */
 :root[data-theme="light"] {
-  --bg: #f4f4f8;
+  /* Fundo com leve tom lavanda — branco puro deixava os cards "sem vida" */
+  --bg: #e9e9f7;
   --bg2: #ffffff;
-  --bg3: #eeeef4;
-  --border: #dcdce6;
-  --border2: #c8c8d6;
-  --text: #1a1a24;
-  --text2: #5c5c74;
-  --text3: #8a8aa0;
+  --bg3: #f1f1fa;
+  --border: #d2d2e6;
+  --border2: #b7b7d4;
+  --text: #15152a;
+  --text2: #52526e;
+  --text3: #85859f;
 
-  --accent: #6d5ce8;
-  --accent-light: #5642d6;
-  --accent-dim: rgba(109,92,232,0.12);
+  --accent: #6b3fe0;
+  --accent-light: #5429c7;
+  --accent-dim: rgba(107,63,224,0.16);
 
-  --green: #17874a;
-  --green-dim: rgba(23,135,74,0.12);
-  --yellow: #a8660a;
-  --yellow-dim: rgba(168,102,10,0.12);
-  --blue: #1c69a8;
-  --blue-dim: rgba(28,105,168,0.12);
-  --purple: #7d3f9d;
-  --purple-dim: rgba(125,63,157,0.12);
-  --teal: #0c7a70;
-  --teal-dim: rgba(12,122,112,0.12);
-  --orange: #ad5a14;
-  --orange-dim: rgba(173,90,20,0.12);
-  --red: #b6362a;
-  --red-dim: rgba(182,54,42,0.12);
+  --green: #157a42;
+  --green-dim: rgba(21,122,66,0.20);
+  --yellow: #9c5b00;
+  --yellow-dim: rgba(156,91,0,0.20);
+  --blue: #15599c;
+  --blue-dim: rgba(21,89,156,0.20);
+  --purple: #8226d9;
+  --purple-dim: rgba(130,38,217,0.18);
+  --teal: #0b7369;
+  --teal-dim: rgba(11,115,105,0.20);
+  --orange: #c1540d;
+  --orange-dim: rgba(193,84,13,0.20);
+  --red: #c21e4d;
+  --red-dim: rgba(194,30,77,0.18);
 
-  --auth-glow: #ded6ff;
-  --shadow: 0 4px 20px rgba(20,20,40,0.08);
+  --auth-glow: #c9bbf5;
+  --shadow: 0 6px 22px rgba(30,20,70,0.12);
 }
 :root[data-theme="light"] ::-webkit-scrollbar-thumb { background: var(--border2); }
+
+/* Cards: no tema claro, o gradiente antigo (60% branco) quase sumia. Aqui a cor
+   domina a mistura, então o card fica visivelmente colorido como no tema escuro. */
+:root[data-theme="light"] .card-green   { background: linear-gradient(135deg, var(--bg2) 15%, var(--green-dim)); }
+:root[data-theme="light"] .card-yellow  { background: linear-gradient(135deg, var(--bg2) 15%, var(--yellow-dim)); }
+:root[data-theme="light"] .card-blue    { background: linear-gradient(135deg, var(--bg2) 15%, var(--blue-dim)); }
+:root[data-theme="light"] .card-purple  { background: linear-gradient(135deg, var(--bg2) 15%, var(--purple-dim)); }
+:root[data-theme="light"] .card-cyan    { background: linear-gradient(135deg, var(--bg2) 15%, rgba(8,145,178,0.20)); }
+:root[data-theme="light"] .card-neutral { background: linear-gradient(135deg, var(--bg2) 15%, var(--accent-dim)); }
+:root[data-theme="light"] .card-orange  { background: linear-gradient(135deg, var(--bg2) 15%, var(--orange-dim)); }
+:root[data-theme="light"] .card { box-shadow: 0 2px 10px rgba(30,20,70,0.06); }
 
 .theme-toggle-btn { font-size: 17px; }
 

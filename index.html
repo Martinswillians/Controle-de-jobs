@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=38" />
+  <link rel="stylesheet" href="css/style.css?v=39" />
   <script>
     (function () {
       try {
@@ -118,6 +118,7 @@
     <ul class="nav-menu">
       <li><a href="#" class="nav-link active" data-page="dashboard">📊 Dashboard</a></li>
       <li><a href="#" class="nav-link" data-page="pending">⏰ Pendências <span id="pendingNavBadge" class="nav-badge hidden">0</span></a></li>
+      <li><a href="#" class="nav-link" data-page="calendar">📅 Agenda</a></li>
       <li><a href="#" class="nav-link" data-page="jobs">📋 Meus Jobs</a></li>
       <li><a href="#" class="nav-link" data-page="nf">🧾 Notas Fiscais/Recibos</a></li>
       <li><a href="#" class="nav-link" data-page="reports">📈 Relatórios</a></li>
@@ -290,6 +291,42 @@
       <div id="pendingEmpty" class="empty-state hidden">
         <span>🎉</span>
         <p>Nenhuma pendência! Todos os jobs estão em dia.</p>
+      </div>
+    </div>
+
+    <!-- ─── AGENDA ─── -->
+    <div id="page-calendar" class="page">
+      <div class="page-header">
+        <h2>📅 Agenda</h2>
+        <button class="btn-primary btn-sm" id="calAddJobBtn">+ Novo Job</button>
+      </div>
+
+      <div class="calendar-toolbar">
+        <div class="dash-view-toggle">
+          <button class="dash-view-btn active" id="calViewMonthBtn" data-calview="month">Mês</button>
+          <button class="dash-view-btn" id="calViewWeekBtn" data-calview="week">Semana</button>
+        </div>
+        <div class="month-nav" id="calNav">
+          <button id="calPrev">‹</button>
+          <button class="btn-outline btn-sm" id="calToday">Hoje</button>
+          <span id="calLabel"></span>
+          <button id="calNext">›</button>
+        </div>
+      </div>
+
+      <div class="calendar-summary" id="calSummary"></div>
+
+      <!-- Visão Mês -->
+      <div id="calMonthView">
+        <div class="calendar-weekdays">
+          <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+        </div>
+        <div class="calendar-grid" id="calMonthGrid"></div>
+      </div>
+
+      <!-- Visão Semana -->
+      <div id="calWeekView" class="hidden">
+        <div class="calendar-week-grid" id="calWeekGrid"></div>
       </div>
     </div>
 
@@ -1134,6 +1171,23 @@
   </div>
 </div>
 
+<!-- DAY DETAIL MODAL (Agenda) -->
+<div id="dayDetailModal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3 id="dayDetailTitle">Dia</h3>
+      <button class="modal-close" id="closeDayDetailModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="dayDetailJobs" class="day-detail-jobs"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" id="cancelDayDetailModal">Fechar</button>
+      <button class="btn-primary" id="dayDetailAddBtn">+ Novo Job nesta data</button>
+    </div>
+  </div>
+</div>
+
 <!-- DELETE CONFIRM MODAL -->
 <div id="deleteModal" class="modal-overlay hidden">
   <div class="modal modal-sm">
@@ -1167,9 +1221,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=37"></script>
-<script type="module" src="js/app.js?v=37"></script>
-<script type="module" src="js/clients.js?v=37"></script>
+<script type="module" src="js/firebase-config.js?v=39"></script>
+<script type="module" src="js/app.js?v=39"></script>
+<script type="module" src="js/clients.js?v=39"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

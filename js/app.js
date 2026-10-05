@@ -601,6 +601,7 @@ function navigateTo(page) {
 
   if (page === "dashboard") renderDashboard();
   else if (page === "pending") renderPendingPage();
+  else if (page === "calendar") renderCalendarPage();
   else if (page === "jobs") renderJobsPage();
   else if (page === "nf") renderNFPage();
   else if (page === "reports") renderReports();
@@ -985,6 +986,201 @@ function renderPendingPage() {
 }
 
 on("pendingSort", "change", renderPendingPage);
+
+// ─────────────────────────────────────────────
+// AGENDA — visão de calendário (Mês / Semana)
+// ─────────────────────────────────────────────
+const DOW_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+let calView = "month"; // "month" | "week"
+let calAnchorDate = new Date();
+
+function startOfWeek(date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay()); // domingo
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Mapa "YYYY-MM-DD" → jobs que têm aquela data (jobs de várias diárias aparecem em todos os dias)
+function jobsByDateMap() {
+  const map = new Map();
+  allJobs.forEach(j => {
+    jobDatesArray(j).forEach(d => {
+      if (!map.has(d)) map.set(d, []);
+      map.get(d).push(j);
+    });
+  });
+  return map;
+}
+
+function renderCalendarSummary(free, busy, periodLabel) {
+  $("calSummary").innerHTML = `
+    <div class="calendar-summary-item"><span class="calendar-summary-dot" style="background:var(--green)"></span><strong>${free}</strong> ${plural(free, "dia livre", "dias livres")} neste ${periodLabel}</div>
+    <div class="calendar-summary-item"><span class="calendar-summary-dot" style="background:var(--accent)"></span><strong>${busy}</strong> ${plural(busy, "dia com job agendado", "dias com job agendado")}</div>`;
+}
+
+function syncCalViewButtons() {
+  $("calViewMonthBtn").classList.toggle("active", calView === "month");
+  $("calViewWeekBtn").classList.toggle("active", calView === "week");
+}
+
+function renderCalendarPage() {
+  syncCalViewButtons();
+  $("calMonthView").classList.toggle("hidden", calView !== "month");
+  $("calWeekView").classList.toggle("hidden", calView !== "week");
+  if (calView === "month") renderCalendarMonth();
+  else renderCalendarWeek();
+}
+
+function renderCalendarMonth() {
+  const year = calAnchorDate.getFullYear();
+  const month = calAnchorDate.getMonth();
+  $("calLabel").textContent = `${MONTHS_PT[month]} ${year}`;
+
+  const map = jobsByDateMap();
+  const gridStart = startOfWeek(new Date(year, month, 1));
+  const todayStr = ymd(new Date());
+
+  let freeCount = 0, busyCount = 0, html = "";
+  for (let i = 0; i < 42; i++) {
+    const d = addDaysLocal(gridStart, i);
+    const dateStr = ymd(d);
+    const inMonth = d.getMonth() === month;
+    const jobs = map.get(dateStr) || [];
+    const isToday = dateStr === todayStr;
+    const isPast = dateStr < todayStr;
+    if (inMonth) { if (jobs.length) busyCount++; else freeCount++; }
+
+    const classes = ["calendar-day"];
+    if (!inMonth) classes.push("other-month");
+    if (isToday) classes.push("is-today");
+    if (isPast && !isToday) classes.push("is-past");
+    if (jobs.length) classes.push("has-jobs");
+
+    const chips = jobs.slice(0, 3).map(j => `<div class="calendar-job-chip st-${j.status}">${escHtml(j.name)}</div>`).join("");
+    const more = jobs.length > 3 ? `<div class="calendar-job-more">+${jobs.length - 3} mais</div>` : "";
+    const freeTag = (!jobs.length && inMonth) ? `<span class="calendar-day-free">Livre</span>` : "";
+
+    html += `<div class="${classes.join(" ")}" data-caldate="${dateStr}">
+      <span class="calendar-day-num">${d.getDate()}</span>
+      ${chips}${more}${freeTag}
+    </div>`;
+  }
+  $("calMonthGrid").innerHTML = html;
+  $("calMonthGrid").querySelectorAll("[data-caldate]").forEach(cell => {
+    cell.addEventListener("click", () => openDayDetailModal(cell.dataset.caldate));
+  });
+
+  renderCalendarSummary(freeCount, busyCount, "mês");
+}
+
+function renderCalendarWeek() {
+  const start = startOfWeek(calAnchorDate);
+  const end = addDaysLocal(start, 6);
+  $("calLabel").textContent = `${fmtDate(ymd(start))} – ${fmtDate(ymd(end))}`;
+
+  const map = jobsByDateMap();
+  const todayStr = ymd(new Date());
+  let freeCount = 0, busyCount = 0, html = "";
+
+  for (let i = 0; i < 7; i++) {
+    const d = addDaysLocal(start, i);
+    const dateStr = ymd(d);
+    const jobs = (map.get(dateStr) || []).slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const isToday = dateStr === todayStr;
+    if (jobs.length) busyCount++; else freeCount++;
+
+    const cards = jobs.map(j => `
+      <div class="calendar-week-job-card st-${j.status}" data-caljob="${j.id}">
+        <div class="job-name">${escHtml(j.name)}</div>
+        <div class="job-client">${escHtml(clientDisplayName(j.client))}</div>
+      </div>`).join("");
+    const emptyTag = jobs.length ? "" : `<div class="calendar-week-day-free">Livre</div>`;
+
+    html += `<div class="calendar-week-day ${isToday ? "is-today" : ""}" data-caldate="${dateStr}">
+      <div class="calendar-week-day-header">
+        <span class="calendar-week-day-dow">${DOW_PT[i]}</span>
+        <span class="calendar-week-day-num">${d.getDate()}</span>
+      </div>
+      ${cards}${emptyTag}
+      <button type="button" class="calendar-week-day-add" data-caladd="${dateStr}">+ Adicionar</button>
+    </div>`;
+  }
+  $("calWeekGrid").innerHTML = html;
+
+  $("calWeekGrid").querySelectorAll("[data-caldate]").forEach(col => {
+    col.addEventListener("click", () => openDayDetailModal(col.dataset.caldate));
+  });
+  $("calWeekGrid").querySelectorAll("[data-caljob]").forEach(card => {
+    card.addEventListener("click", e => { e.stopPropagation(); openJobModal(card.dataset.caljob); });
+  });
+  $("calWeekGrid").querySelectorAll("[data-caladd]").forEach(btn => {
+    btn.addEventListener("click", e => { e.stopPropagation(); openJobModalForDate(btn.dataset.caladd); });
+  });
+
+  renderCalendarSummary(freeCount, busyCount, "semana");
+}
+
+// Abre o modal de Job já novo, com a(s) data(s) pré-preenchida(s) com o dia clicado
+function openJobModalForDate(dateStr) {
+  openJobModal(null);
+  jobModalDates = [dateStr];
+  renderJobDateRows();
+  recalcJobValue();
+}
+
+// ── Modal de detalhe do dia ──
+let dayDetailDate = null;
+
+function openDayDetailModal(dateStr) {
+  dayDetailDate = dateStr;
+  const jobs = jobsByDateMap().get(dateStr) || [];
+  $("dayDetailTitle").textContent = fmtDate(dateStr);
+
+  const box = $("dayDetailJobs");
+  if (!jobs.length) {
+    box.innerHTML = `<div class="day-detail-empty">Nenhum job agendado neste dia — você está livre! 🎉</div>`;
+  } else {
+    box.innerHTML = jobs.map(j => `
+      <div class="calendar-week-job-card st-${j.status}" data-caljob="${j.id}" style="cursor:pointer">
+        <div class="job-name">${escHtml(j.name)}</div>
+        <div class="job-client">${escHtml(clientDisplayName(j.client))} · ${fmt(j.value)} · ${statusLabel(j.status)}</div>
+      </div>`).join("");
+    box.querySelectorAll("[data-caljob]").forEach(card => {
+      card.addEventListener("click", () => { closeDayDetailModal(); openJobModal(card.dataset.caljob); });
+    });
+  }
+  $("dayDetailModal").classList.remove("hidden");
+}
+
+function closeDayDetailModal() {
+  $("dayDetailModal").classList.add("hidden");
+  dayDetailDate = null;
+}
+on("closeDayDetailModal", "click", closeDayDetailModal);
+on("cancelDayDetailModal", "click", closeDayDetailModal);
+on("dayDetailAddBtn", "click", () => {
+  const d = dayDetailDate;
+  closeDayDetailModal();
+  if (d) openJobModalForDate(d);
+});
+
+// ── Navegação da Agenda ──
+on("calPrev", "click", () => {
+  if (calView === "month") calAnchorDate.setMonth(calAnchorDate.getMonth() - 1);
+  else calAnchorDate = addDaysLocal(calAnchorDate, -7);
+  renderCalendarPage();
+});
+on("calNext", "click", () => {
+  if (calView === "month") calAnchorDate.setMonth(calAnchorDate.getMonth() + 1);
+  else calAnchorDate = addDaysLocal(calAnchorDate, 7);
+  renderCalendarPage();
+});
+on("calToday", "click", () => { calAnchorDate = new Date(); renderCalendarPage(); });
+on("calViewMonthBtn", "click", () => { calView = "month"; renderCalendarPage(); });
+on("calViewWeekBtn", "click", () => { calView = "week"; renderCalendarPage(); });
+on("calAddJobBtn", "click", () => openJobModal());
+
 
 // ─────────────────────────────────────────────
 // DASHBOARD

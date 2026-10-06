@@ -3151,3 +3151,4 @@ if ("serviceWorker" in navigator) {
 
 // Initial populate
 populateFilterMonths();
+

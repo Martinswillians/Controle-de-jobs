@@ -529,7 +529,19 @@ a:hover { color: var(--accent-light); }
 .month-nav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+/* O seletor ".month-nav button" força 32x32px — correto para ‹ › (ícones),
+   mas espremia o texto de botões com rótulo (ex: "Hoje"). Restaura o tamanho natural. */
+.month-nav button.btn-outline {
+  width: auto;
+  height: auto;
+}
+#calLabel {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  padding: 0 2px;
 }
 .month-nav button {
   background: var(--bg3);
@@ -1992,3 +2004,12 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
   .calendar-week-grid { grid-template-columns: 1fr; }
 }
 
+
+.calendar-export-card { margin-top: 20px; }
+.calendar-export-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}

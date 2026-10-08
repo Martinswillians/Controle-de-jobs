@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=39" />
+  <link rel="stylesheet" href="css/style.css?v=40" />
   <script>
     (function () {
       try {
@@ -327,6 +327,22 @@
       <!-- Visão Semana -->
       <div id="calWeekView" class="hidden">
         <div class="calendar-week-grid" id="calWeekGrid"></div>
+      </div>
+
+      <div class="section-card calendar-export-card">
+        <h3>Exportar Disponibilidade</h3>
+        <p class="section-hint">Gera uma lista dia a dia (Livre / Ocupado, com o(s) job(s) de cada dia) para o período escolhido abaixo. O período é calculado a partir da data em que você está navegando acima (use ‹ Hoje › para mudar).</p>
+        <div class="calendar-export-controls">
+          <div class="dash-view-toggle" id="calExportPeriodType">
+            <button class="dash-view-btn" data-calexport="week">Semana</button>
+            <button class="dash-view-btn active" data-calexport="month">Mês</button>
+            <button class="dash-view-btn" data-calexport="year">Ano</button>
+          </div>
+          <div class="export-bar" style="margin:0">
+            <button class="btn-outline btn-sm" id="calExportPDF">📄 PDF</button>
+            <button class="btn-outline btn-sm" id="calExportCSV">📁 CSV</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1221,9 +1237,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=39"></script>
-<script type="module" src="js/app.js?v=39"></script>
-<script type="module" src="js/clients.js?v=39"></script>
+<script type="module" src="js/firebase-config.js?v=40"></script>
+<script type="module" src="js/app.js?v=40"></script>
+<script type="module" src="js/clients.js?v=40"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -1237,4 +1253,3 @@
 
 </body>
 </html>
-

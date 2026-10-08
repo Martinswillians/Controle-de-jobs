@@ -2,7 +2,7 @@
 // Service Worker — Controle de Job (Atualizado)
 // ═══════════════════════════════════════════════
 // Mude essa versão sempre que fizer uma grande atualização no código do app
-const CACHE_NAME = "jobcontrol-v4.15";
+const CACHE_NAME = "jobcontrol-v4.16";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -69,4 +69,3 @@ self.addEventListener("fetch", e => {
     })
   );
 });
-

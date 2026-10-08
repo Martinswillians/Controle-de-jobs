@@ -1181,6 +1181,93 @@ on("calViewMonthBtn", "click", () => { calView = "month"; renderCalendarPage(); 
 on("calViewWeekBtn", "click", () => { calView = "week"; renderCalendarPage(); });
 on("calAddJobBtn", "click", () => openJobModal());
 
+// ── Exportar Disponibilidade (Agenda) ──
+let calExportPeriodType = "month"; // "week" | "month" | "year"
+
+$("calExportPeriodType")?.querySelectorAll(".dash-view-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    calExportPeriodType = btn.dataset.calexport;
+    $("calExportPeriodType").querySelectorAll(".dash-view-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.calexport === calExportPeriodType);
+    });
+  });
+});
+
+function computeAvailabilityRange(periodType, anchor) {
+  if (periodType === "week") {
+    const start = startOfWeek(anchor);
+    const end = addDaysLocal(start, 6);
+    return { start, end, label: `Semana de ${fmtDate(ymd(start))} a ${fmtDate(ymd(end))}` };
+  }
+  if (periodType === "year") {
+    const start = new Date(anchor.getFullYear(), 0, 1);
+    const end = new Date(anchor.getFullYear(), 11, 31);
+    return { start, end, label: `Ano de ${anchor.getFullYear()}` };
+  }
+  const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+  return { start, end, label: `${MONTHS_PT[anchor.getMonth()]} ${anchor.getFullYear()}` };
+}
+
+function buildAvailabilityRows(start, end) {
+  const map = jobsByDateMap();
+  const rows = [];
+  let d = new Date(start);
+  while (d <= end) {
+    const dateStr = ymd(d);
+    const jobs = map.get(dateStr) || [];
+    rows.push({
+      date: dateStr,
+      dow: DOW_PT[d.getDay()],
+      status: jobs.length ? "Ocupado" : "Livre",
+      jobs: jobs.map(j => `${j.name} (${clientDisplayName(j.client)})`).join("; ")
+    });
+    d = addDaysLocal(d, 1);
+  }
+  return rows;
+}
+
+on("calExportCSV", "click", () => {
+  const { start, end, label } = computeAvailabilityRange(calExportPeriodType, calAnchorDate);
+  const rows = buildAvailabilityRows(start, end);
+  const free = rows.filter(r => r.status === "Livre").length;
+  const busy = rows.length - free;
+
+  const meta = exportMeta("Disponibilidade da Agenda", label);
+  const summaryRow = [`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${rows.length} dias no total`];
+  const headerRow = ["Data", "Dia da Semana", "Status", "Job(s)"];
+  const dataRows = rows.map(r => [fmtDate(r.date), r.dow, r.status, r.jobs]);
+
+  const all = [...metaRowsAOA(meta), summaryRow, [], headerRow, ...dataRows];
+  const csv = all.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  downloadFile(csv, `disponibilidade-${ymd(start)}-a-${ymd(end)}.csv`, "text/csv");
+});
+
+on("calExportPDF", "click", () => {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const { start, end, label } = computeAvailabilityRange(calExportPeriodType, calAnchorDate);
+  const meta = exportMeta("Disponibilidade da Agenda", label);
+  const startY = pdfHeader(doc, meta);
+
+  const rows = buildAvailabilityRows(start, end);
+  const free = rows.filter(r => r.status === "Livre").length;
+  const busy = rows.length - free;
+  doc.setFontSize(10);
+  doc.text(`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${rows.length} dias no total`, 14, startY - 4);
+
+  doc.autoTable({
+    startY: startY + 2,
+    head: [["Data", "Dia da Semana", "Status", "Job(s)"]],
+    body: rows.map(r => [fmtDate(r.date), r.dow, r.status, r.jobs || "-"]),
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [124,106,247] },
+    columnStyles: { 3: { cellWidth: 90 } }
+  });
+
+  doc.save(`disponibilidade-${ymd(start)}-a-${ymd(end)}.pdf`);
+});
+
 
 // ─────────────────────────────────────────────
 // DASHBOARD
@@ -2939,20 +3026,15 @@ function renderTopClientes() {
 // ─────────────────────────────────────────────
 on("repExportExcel", "click", () => {
   const jobs = getReportJobs();
-  const data = jobs.map(j => ({
-    Data: fmtJobDatesPlain(j),
-    Job: j.name,
-    Cliente: j.client,
-    Valor: Number(j.value),
-    Pago: paidAmountOf(j),
-    Pendente: pendingAmountOf(j),
-    Status: statusLabel(j.status),
-    "NF Nº": nfsArray(j).map(n => n.number).join("; "),
-    "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
-    "Recibo": receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
-    Observações: j.notes || ""
-  }));
-  const ws = XLSX.utils.json_to_sheet(data);
+  const meta = exportMeta("Relatório Financeiro", reportPeriodLabel() || "Todos os períodos");
+  const headerRow = ["Data","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
+  const dataRows = jobs.map(j => [
+    fmtJobDatesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
+    nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => fmtDate(n.date)).join("; "),
+    receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
+    j.notes || ""
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([...metaRowsAOA(meta), headerRow, ...dataRows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Relatório");
   const label = reportPeriodLabel().replace(/\s+/g, "_") || "geral";
@@ -2962,10 +3044,8 @@ on("repExportExcel", "click", () => {
 on("repExportPDF", "click", () => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  doc.setFontSize(16);
-  doc.text("Relatório - Controle de Job", 14, 16);
-  doc.setFontSize(10);
-  doc.text(`Período: ${reportPeriodLabel() || "Todos"} | Exportado em ${new Date().toLocaleDateString("pt-BR")}`, 14, 22);
+  const meta = exportMeta("Relatório Financeiro", reportPeriodLabel() || "Todos os períodos");
+  const startY = pdfHeader(doc, meta);
 
   const jobs = getReportJobs();
   const total = jobs.reduce((a,j)=>a+Number(j.value||0),0);
@@ -2973,7 +3053,7 @@ on("repExportPDF", "click", () => {
   const totalPendente = jobs.reduce((a,j)=>a+pendingAmountOf(j),0);
 
   doc.autoTable({
-    startY: 28,
+    startY,
     head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
     body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)]),
     foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
@@ -3068,31 +3148,28 @@ function updateMEIAlert() {
 // ─────────────────────────────────────────────
 on("exportCSV", "click", () => {
   const jobs = getFilteredJobs();
+  const meta = exportMeta("Lista de Jobs", jobsFilterLabel());
   const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
   const rows = jobs.map(j => [
     jobDatesArray(j).join("; "), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), receiptsArray(j).map(r => r.number).filter(Boolean).join("; "), j.notes || ""
   ]);
-  const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const all = [...metaRowsAOA(meta), header, ...rows];
+  const csv = all.map(r => r.map(c => `"${String(c ?? "").replace(/"/g,'""')}"`).join(",")).join("\n");
   downloadFile(csv, "jobs.csv", "text/csv");
 });
 
 on("exportExcel", "click", () => {
   const jobs = getFilteredJobs();
-  const data = jobs.map(j => ({
-    Data: fmtJobDatesPlain(j),
-    Job: j.name,
-    Cliente: j.client,
-    Valor: Number(j.value),
-    Pago: paidAmountOf(j),
-    Pendente: pendingAmountOf(j),
-    Status: statusLabel(j.status),
-    "NF Nº": nfsArray(j).map(n => n.number).join("; "),
-    "NF Data": nfsArray(j).map(n => fmtDate(n.date)).join("; "),
-    "Recibo": receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
-    Observações: j.notes || ""
-  }));
-  const ws = XLSX.utils.json_to_sheet(data);
+  const meta = exportMeta("Lista de Jobs", jobsFilterLabel());
+  const headerRow = ["Data","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
+  const dataRows = jobs.map(j => [
+    fmtJobDatesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
+    nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => fmtDate(n.date)).join("; "),
+    receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
+    j.notes || ""
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([...metaRowsAOA(meta), headerRow, ...dataRows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Jobs");
   XLSX.writeFile(wb, "controle-jobs.xlsx");
@@ -3101,10 +3178,8 @@ on("exportExcel", "click", () => {
 on("exportPDF", "click", () => {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  doc.setFontSize(16);
-  doc.text("Controle de Jobs", 14, 16);
-  doc.setFontSize(10);
-  doc.text(`Exportado em ${new Date().toLocaleDateString("pt-BR")}`, 14, 22);
+  const meta = exportMeta("Lista de Jobs", jobsFilterLabel());
+  const startY = pdfHeader(doc, meta);
 
   const jobs = getFilteredJobs();
   const total = jobs.reduce((a,j)=>a+Number(j.value||0),0);
@@ -3112,7 +3187,7 @@ on("exportPDF", "click", () => {
   const totalPendente = jobs.reduce((a,j)=>a+pendingAmountOf(j),0);
 
   doc.autoTable({
-    startY: 28,
+    startY,
     head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
     body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)]),
     foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
@@ -3135,6 +3210,59 @@ function getFilteredJobs() {
   return jobs;
 }
 
+// ─────────────────────────────────────────────
+// CABEÇALHO PADRÃO DAS EXPORTAÇÕES
+// Todo arquivo exportado (CSV/Excel/PDF) leva: nome do relatório, usuário e período/dados selecionados.
+// ─────────────────────────────────────────────
+function exportMeta(reportName, periodLabel) {
+  const now = new Date();
+  return {
+    reportName,
+    userName: currentUserName || currentUser?.email || "Usuário",
+    periodLabel,
+    exportedAt: `${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+  };
+}
+
+// Linhas de metadado para CSV/Excel (array de arrays, uma linha em branco separa da tabela)
+function metaRowsAOA(meta) {
+  return [
+    [meta.reportName],
+    [`Usuário: ${meta.userName}`],
+    [`Período: ${meta.periodLabel}`],
+    [`Exportado em: ${meta.exportedAt}`],
+    []
+  ];
+}
+
+// Escreve o cabeçalho no topo do PDF e devolve o Y sugerido para iniciar a tabela
+function pdfHeader(doc, meta) {
+  doc.setFontSize(16);
+  doc.text(meta.reportName, 14, 16);
+  doc.setFontSize(10);
+  doc.text(`Usuário: ${meta.userName}`, 14, 23);
+  doc.text(`Período: ${meta.periodLabel}`, 14, 29);
+  doc.text(`Exportado em: ${meta.exportedAt}`, 14, 35);
+  return 42;
+}
+
+// Descreve os filtros ativos na tela de Jobs, para usar como "período/dados selecionados"
+function jobsFilterLabel() {
+  const parts = [];
+  const fMonth = $("filterMonth")?.value;
+  const fClient = $("filterClient")?.value;
+  const fStatus = $("filterStatus")?.value;
+  const fNF = $("filterNF")?.value;
+  const fSearch = $("searchJobs")?.value?.trim();
+  if (fMonth) { const [y, m] = fMonth.split("-"); parts.push(`${MONTHS_PT[parseInt(m, 10) - 1]} ${y}`); }
+  if (fClient) parts.push(`Cliente: ${clientDisplayName(fClient)}`);
+  if (fStatus) parts.push(`Status: ${statusLabel(fStatus)}`);
+  if (fNF === "com") parts.push("Com NF/Recibo");
+  if (fNF === "sem") parts.push("Sem NF/Recibo");
+  if (fSearch) parts.push(`Busca: "${fSearch}"`);
+  return parts.length ? parts.join(" · ") : "Todos os jobs";
+}
+
 function downloadFile(content, filename, type) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([content], { type }));
@@ -3151,4 +3279,3 @@ if ("serviceWorker" in navigator) {
 
 // Initial populate
 populateFilterMonths();
-

@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=40" />
+  <link rel="stylesheet" href="css/style.css?v=41" />
   <script>
     (function () {
       try {
@@ -292,6 +292,12 @@
         <span>🎉</span>
         <p>Nenhuma pendência! Todos os jobs estão em dia.</p>
       </div>
+
+      <div class="export-bar">
+        <button class="btn-outline btn-sm" id="pendingExportPDF">📄 PDF</button>
+        <button class="btn-outline btn-sm" id="pendingExportCSV">📁 CSV</button>
+      </div>
+      <p class="section-hint">Se houver jobs marcados na tabela, apenas eles serão exportados.</p>
     </div>
 
     <!-- ─── AGENDA ─── -->
@@ -342,6 +348,31 @@
             <button class="btn-outline btn-sm" id="calExportPDF">📄 PDF</button>
             <button class="btn-outline btn-sm" id="calExportCSV">📁 CSV</button>
           </div>
+        </div>
+      </div>
+
+      <div class="section-card calendar-agenda-list-card">
+        <h3 id="calAgendaTitle">Compromissos</h3>
+        <p class="section-hint" id="calAgendaSummary"></p>
+        <div class="table-wrap">
+          <table class="jobs-table keep-cols" id="calAgendaTable">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Dia</th>
+                <th>Horário</th>
+                <th>Horas</th>
+                <th>Job</th>
+                <th>Cliente</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="calAgendaBody"></tbody>
+          </table>
+        </div>
+        <div id="calAgendaEmpty" class="empty-state hidden">
+          <span>🎉</span>
+          <p>Nenhum compromisso neste período.</p>
         </div>
       </div>
     </div>
@@ -701,6 +732,7 @@
       <div class="form-grid">
         <div class="field field-full">
           <label>Data(s) do Job * <span class="field-hint">— adicione mais de uma diária se o job durou vários dias</span></label>
+          <label class="checkbox-inline job-times-toggle"><input type="checkbox" id="jobShowTimes" /> 🕐 Informar horário (início e fim) de cada dia</label>
           <div id="jobDatesList" class="job-dates-list"></div>
           <div class="date-add-actions">
             <button type="button" class="btn-outline btn-sm" id="addJobDateBtn">+ Adicionar diária</button>
@@ -718,6 +750,17 @@
               </div>
             </div>
             <label class="checkbox-inline"><input type="checkbox" id="rangeSkipWeekends" /> Pular sábados e domingos</label>
+            <div class="date-range-inputs">
+              <div class="field">
+                <label>Início <span class="field-hint">(opcional)</span></label>
+                <input type="time" id="rangeStartTime" />
+              </div>
+              <div class="field">
+                <label>Fim <span class="field-hint">(opcional)</span></label>
+                <input type="time" id="rangeEndTime" />
+              </div>
+            </div>
+            <p class="section-hint" style="margin:-6px 0 10px">Se preencher o horário, ele é aplicado a todos os dias do intervalo (você pode ajustar dia a dia depois).</p>
             <div class="date-range-preview" id="rangePreview"></div>
             <div class="date-range-actions">
               <button type="button" class="btn-outline btn-sm" id="rangeCancelBtn">Cancelar</button>
@@ -1237,9 +1280,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=40"></script>
-<script type="module" src="js/app.js?v=40"></script>
-<script type="module" src="js/clients.js?v=40"></script>
+<script type="module" src="js/firebase-config.js?v=41"></script>
+<script type="module" src="js/app.js?v=41"></script>
+<script type="module" src="js/clients.js?v=41"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

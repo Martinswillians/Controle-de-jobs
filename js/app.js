@@ -365,6 +365,59 @@ function closeDocsViewModal() {
 on("closeDocsViewModal", "click", closeDocsViewModal);
 on("cancelDocsViewModal", "click", closeDocsViewModal);
 
+// ─────────────────────────────────────────────
+// HORÁRIO DOS JOBS (início/fim por diária)
+// ─────────────────────────────────────────────
+function hoursBetween(start, end) {
+  if (!start || !end) return 0;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  const diff = (eh * 60 + em) - (sh * 60 + sm);
+  return diff > 0 ? Math.round(diff / 60 * 100) / 100 : 0; // só no mesmo dia; virada de meia-noite = informar as horas manualmente
+}
+
+// "09:00-17:00", "a partir das 09:00", "até 17:00" ou "" — ASCII puro para não quebrar no PDF
+function timeRangeLabel(t) {
+  if (!t) return "";
+  const s = t.start || "", e = t.end || "";
+  if (s && e) return `${s}-${e}`;
+  if (s) return `a partir das ${s}`;
+  if (e) return `até ${e}`;
+  return "";
+}
+
+const fmtHoursLabel = h => `${String(Number(h)).replace(".", ",")}h`;
+
+function hasJobTimes(j) {
+  return jobDatesArray(j).some(d => timeRangeLabel(j.times?.[d]));
+}
+
+// Horas agendadas de um job POR HORA em um dia (0 se não for por hora)
+function jobHoursOnDate(j, dateStr) {
+  return j.pricingMode === "hora" ? Number(j.hours?.[dateStr] || 0) : 0;
+}
+
+// Texto de horário do job inteiro para exportações: igual em todos os dias → só o horário;
+// senão "dd/mm horário; dd/mm horário"
+function jobTimesPlain(j) {
+  const dates = jobDatesArray(j);
+  const entries = dates.map(d => ({ d, label: timeRangeLabel(j.times?.[d]) })).filter(x => x.label);
+  if (!entries.length) return "";
+  const allSame = entries.length === dates.length && entries.every(x => x.label === entries[0].label);
+  if (allSame) return entries[0].label;
+  return entries.map(x => `${x.d.slice(8, 10)}/${x.d.slice(5, 7)} ${x.label}`).join("; ");
+}
+
+// "09:00-17:00 · 8h" de um job em um dia específico ("" se não houver nada a mostrar)
+function jobDayMeta(j, dateStr) {
+  const parts = [];
+  const t = timeRangeLabel(j.times?.[dateStr]);
+  if (t) parts.push(t);
+  const h = jobHoursOnDate(j, dateStr);
+  if (h > 0) parts.push(fmtHoursLabel(h));
+  return parts.join(" · ");
+}
+
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -938,15 +991,20 @@ on("backupBtn", "click", async () => {
 // ─────────────────────────────────────────────
 // PENDÊNCIAS — todos os jobs com valor ainda a receber
 // ─────────────────────────────────────────────
-function renderPendingPage() {
+// Jobs com valor a receber, na ordem escolhida (usada na tela e nas exportações)
+function getPendingJobs() {
   const pending = allJobs.filter(j => pendingAmountOf(j) > 0);
-
   const sort = $("pendingSort")?.value || "date_asc";
   pending.sort((a, b) => {
     if (sort === "date_desc") return (b.date || "").localeCompare(a.date || "");
     if (sort === "value_desc") return pendingAmountOf(b) - pendingAmountOf(a);
     return (a.date || "").localeCompare(b.date || ""); // date_asc (padrão)
   });
+  return pending;
+}
+
+function renderPendingPage() {
+  const pending = getPendingJobs();
 
   const totalPendente = pending.reduce((a, j) => a + pendingAmountOf(j), 0);
   const countDocOnly = pending.filter(j => j.status === "pendente_nf" || j.status === "pendente_recibo").length;
@@ -986,6 +1044,67 @@ function renderPendingPage() {
 }
 
 on("pendingSort", "change", renderPendingPage);
+
+// ── Exportar Pendências (PDF / CSV) ──
+// Se houver jobs marcados na tabela, exporta só eles; senão, todas as pendências.
+function pendingExportData() {
+  const all = getPendingJobs();
+  const selected = all.filter(j => selectedJobIds.has(j.id));
+  const jobs = selected.length ? selected : all;
+  const sortText = $("pendingSort")?.selectedOptions?.[0]?.textContent || "";
+  const scope = selected.length
+    ? `Jobs selecionados (${selected.length} de ${all.length})`
+    : "Todos os jobs com valor a receber";
+  return { jobs, label: `${scope} · Ordenação: ${sortText}` };
+}
+
+on("pendingExportCSV", "click", () => {
+  const { jobs, label } = pendingExportData();
+  if (!jobs.length) return showToast("Não há pendências para exportar.", "error");
+  const meta = exportMeta("Pendências de Recebimento", label);
+  const totalPendente = jobs.reduce((a, j) => a + pendingAmountOf(j), 0);
+  const summaryRow = [`Resumo: ${jobs.length} ${plural(jobs.length, "job", "jobs")} · total pendente ${fmt(totalPendente)}`];
+  const headerRow = ["Data(s)", "Horário", "Job", "Cliente", "Status", "Valor Total", "Pago", "Pendente"];
+  const dataRows = jobs.map(j => [
+    jobDatesArray(j).join("; "), jobTimesPlain(j), j.name, clientDisplayName(j.client), statusLabel(j.status),
+    Number(j.value || 0), paidAmountOf(j), pendingAmountOf(j)
+  ]);
+  const all = [...metaRowsAOA(meta), summaryRow, [], headerRow, ...dataRows];
+  const csv = all.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  downloadFile(csv, `pendencias-${today()}.csv`, "text/csv");
+});
+
+on("pendingExportPDF", "click", () => {
+  const { jobs, label } = pendingExportData();
+  if (!jobs.length) return showToast("Não há pendências para exportar.", "error");
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const meta = exportMeta("Pendências de Recebimento", label);
+  const startY = pdfHeader(doc, meta);
+
+  const total = jobs.reduce((a, j) => a + Number(j.value || 0), 0);
+  const totalPendente = jobs.reduce((a, j) => a + pendingAmountOf(j), 0);
+  const withTimes = jobs.some(hasJobTimes);
+
+  const head = withTimes
+    ? ["Data", "Horário", "Job", "Cliente", "Status", "Total", "Pendente"]
+    : ["Data", "Job", "Cliente", "Status", "Total", "Pendente"];
+  const body = jobs.map(j => {
+    const row = [fmtJobDatesPlain(j), j.name, clientDisplayName(j.client), statusLabelPlain(j.status), fmt(j.value), fmt(pendingAmountOf(j))];
+    if (withTimes) row.splice(1, 0, jobTimesPlain(j) || "-");
+    return row;
+  });
+  const foot = [[...Array(withTimes ? 4 : 3).fill(""), "TOTAL", fmt(total), fmt(totalPendente)]];
+
+  doc.autoTable({
+    startY,
+    head, body, foot,
+    styles: { fontSize: withTimes ? 8 : 9 },
+    headStyles: { fillColor: [124, 106, 247] },
+    footStyles: { fontStyle: "bold" }
+  });
+  doc.save(`pendencias-${today()}.pdf`);
+});
 
 // ─────────────────────────────────────────────
 // AGENDA — visão de calendário (Mês / Semana)
@@ -1057,7 +1176,10 @@ function renderCalendarMonth() {
     if (isPast && !isToday) classes.push("is-past");
     if (jobs.length) classes.push("has-jobs");
 
-    const chips = jobs.slice(0, 3).map(j => `<div class="calendar-job-chip st-${j.status}">${escHtml(j.name)}</div>`).join("");
+    const chips = jobs.slice(0, 3).map(j => {
+      const st = j.times?.[dateStr]?.start;
+      return `<div class="calendar-job-chip st-${j.status}">${st ? escHtml(st) + " " : ""}${escHtml(j.name)}</div>`;
+    }).join("");
     const more = jobs.length > 3 ? `<div class="calendar-job-more">+${jobs.length - 3} mais</div>` : "";
     const freeTag = (!jobs.length && inMonth) ? `<span class="calendar-day-free">Livre</span>` : "";
 
@@ -1072,6 +1194,7 @@ function renderCalendarMonth() {
   });
 
   renderCalendarSummary(freeCount, busyCount, "mês");
+  renderCalendarAgendaList(new Date(year, month, 1), new Date(year, month + 1, 0), `${MONTHS_PT[month]} ${year}`);
 }
 
 function renderCalendarWeek() {
@@ -1094,6 +1217,7 @@ function renderCalendarWeek() {
       <div class="calendar-week-job-card st-${j.status}" data-caljob="${j.id}">
         <div class="job-name">${escHtml(j.name)}</div>
         <div class="job-client">${escHtml(clientDisplayName(j.client))}</div>
+        ${jobDayMeta(j, dateStr) ? `<div class="job-client">🕐 ${escHtml(jobDayMeta(j, dateStr))}</div>` : ""}
       </div>`).join("");
     const emptyTag = jobs.length ? "" : `<div class="calendar-week-day-free">Livre</div>`;
 
@@ -1119,6 +1243,57 @@ function renderCalendarWeek() {
   });
 
   renderCalendarSummary(freeCount, busyCount, "semana");
+  renderCalendarAgendaList(start, end, `${fmtDate(ymd(start))} a ${fmtDate(ymd(end))}`);
+}
+
+// Ordena compromissos do mesmo dia: com horário primeiro (por início), depois sem horário
+function startTimeKey(j, dateStr) { return j.times?.[dateStr]?.start || "99:99"; }
+
+// Lista de compromissos (dia a dia) do período exibido, no fim da página da Agenda
+function renderCalendarAgendaList(start, end, label) {
+  const map = jobsByDateMap();
+  const todayStr = ymd(new Date());
+  const rows = [];
+  let d = new Date(start);
+  while (d <= end) {
+    const dateStr = ymd(d);
+    (map.get(dateStr) || []).forEach(j => rows.push({ date: dateStr, dow: DOW_PT[d.getDay()], job: j }));
+    d = addDaysLocal(d, 1);
+  }
+  rows.sort((x, y) => x.date.localeCompare(y.date)
+    || startTimeKey(x.job, x.date).localeCompare(startTimeKey(y.job, y.date))
+    || (x.job.name || "").localeCompare(y.job.name || ""));
+
+  $("calAgendaTitle").textContent = `Compromissos — ${label}`;
+  const days = new Set(rows.map(r => r.date)).size;
+  const totalHours = rows.reduce((a, r) => a + jobHoursOnDate(r.job, r.date), 0);
+  $("calAgendaSummary").textContent = rows.length
+    ? `${rows.length} ${plural(rows.length, "compromisso", "compromissos")} em ${days} ${plural(days, "dia", "dias")}${totalHours > 0 ? ` · ${fmtHoursLabel(totalHours)} agendadas em jobs por hora` : ""}`
+    : "";
+
+  $("calAgendaEmpty").classList.toggle("hidden", rows.length > 0);
+  $("calAgendaTable").classList.toggle("hidden", rows.length === 0);
+
+  const tbody = $("calAgendaBody");
+  tbody.innerHTML = "";
+  rows.forEach(r => {
+    const j = r.job;
+    const time = timeRangeLabel(j.times?.[r.date]);
+    const hours = jobHoursOnDate(j, r.date);
+    const tr = document.createElement("tr");
+    tr.classList.add("clickable-row");
+    if (r.date === todayStr) tr.classList.add("agenda-row-today");
+    tr.innerHTML = `
+      <td class="job-date">${fmtDate(r.date)}</td>
+      <td>${r.dow}</td>
+      <td>${time ? escHtml(time) : "—"}</td>
+      <td>${hours > 0 ? fmtHoursLabel(hours) : "—"}</td>
+      <td><div class="job-name">${escHtml(j.name)}</div></td>
+      <td><div class="job-client">${escHtml(clientDisplayName(j.client))}</div></td>
+      <td>${statusBadge(j)}</td>`;
+    tr.addEventListener("click", () => openJobModal(j.id));
+    tbody.appendChild(tr);
+  });
 }
 
 // Abre o modal de Job já novo, com a(s) data(s) pré-preenchida(s) com o dia clicado
@@ -1145,6 +1320,7 @@ function openDayDetailModal(dateStr) {
       <div class="calendar-week-job-card st-${j.status}" data-caljob="${j.id}" style="cursor:pointer">
         <div class="job-name">${escHtml(j.name)}</div>
         <div class="job-client">${escHtml(clientDisplayName(j.client))} · ${fmt(j.value)} · ${statusLabel(j.status)}</div>
+        ${jobDayMeta(j, dateStr) ? `<div class="job-client">🕐 ${escHtml(jobDayMeta(j, dateStr))}</div>` : ""}
       </div>`).join("");
     box.querySelectorAll("[data-caljob]").forEach(card => {
       card.addEventListener("click", () => { closeDayDetailModal(); openJobModal(card.dataset.caljob); });
@@ -1215,28 +1391,44 @@ function buildAvailabilityRows(start, end) {
   let d = new Date(start);
   while (d <= end) {
     const dateStr = ymd(d);
-    const jobs = map.get(dateStr) || [];
-    rows.push({
-      date: dateStr,
-      dow: DOW_PT[d.getDay()],
-      status: jobs.length ? "Ocupado" : "Livre",
-      jobs: jobs.map(j => `${j.name} (${clientDisplayName(j.client)})`).join("; ")
-    });
+    const dow = DOW_PT[d.getDay()];
+    const jobs = (map.get(dateStr) || []).slice()
+      .sort((x, y) => startTimeKey(x, dateStr).localeCompare(startTimeKey(y, dateStr)) || (x.name || "").localeCompare(y.name || ""));
+    if (!jobs.length) {
+      rows.push({ date: dateStr, dow, status: "Livre", time: "", hours: "", job: "", client: "" });
+    } else {
+      jobs.forEach(j => {
+        const h = jobHoursOnDate(j, dateStr);
+        rows.push({
+          date: dateStr, dow, status: "Ocupado",
+          time: timeRangeLabel(j.times?.[dateStr]),
+          hours: h > 0 ? fmtHoursLabel(h) : "",
+          job: j.name,
+          client: clientDisplayName(j.client)
+        });
+      });
+    }
     d = addDaysLocal(d, 1);
   }
   return rows;
 }
 
+// Dias livres/ocupados (conta DIAS, não linhas — um dia pode ter vários compromissos)
+function availabilityCounts(rows) {
+  const free = rows.filter(r => r.status === "Livre").length;
+  const busy = new Set(rows.filter(r => r.status === "Ocupado").map(r => r.date)).size;
+  return { free, busy, total: free + busy };
+}
+
 on("calExportCSV", "click", () => {
   const { start, end, label } = computeAvailabilityRange(calExportPeriodType, calAnchorDate);
   const rows = buildAvailabilityRows(start, end);
-  const free = rows.filter(r => r.status === "Livre").length;
-  const busy = rows.length - free;
+  const { free, busy, total } = availabilityCounts(rows);
 
   const meta = exportMeta("Disponibilidade da Agenda", label);
-  const summaryRow = [`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${rows.length} dias no total`];
-  const headerRow = ["Data", "Dia da Semana", "Status", "Job(s)"];
-  const dataRows = rows.map(r => [fmtDate(r.date), r.dow, r.status, r.jobs]);
+  const summaryRow = [`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${total} dias no total`];
+  const headerRow = ["Data", "Dia da Semana", "Status", "Horário", "Horas", "Job", "Cliente"];
+  const dataRows = rows.map(r => [fmtDate(r.date), r.dow, r.status, r.time, r.hours, r.job, r.client]);
 
   const all = [...metaRowsAOA(meta), summaryRow, [], headerRow, ...dataRows];
   const csv = all.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -1251,18 +1443,17 @@ on("calExportPDF", "click", () => {
   const startY = pdfHeader(doc, meta);
 
   const rows = buildAvailabilityRows(start, end);
-  const free = rows.filter(r => r.status === "Livre").length;
-  const busy = rows.length - free;
+  const { free, busy, total } = availabilityCounts(rows);
   doc.setFontSize(10);
-  doc.text(`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${rows.length} dias no total`, 14, startY - 4);
+  doc.text(`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${total} dias no total`, 14, startY - 4);
 
   doc.autoTable({
     startY: startY + 2,
-    head: [["Data", "Dia da Semana", "Status", "Job(s)"]],
-    body: rows.map(r => [fmtDate(r.date), r.dow, r.status, r.jobs || "-"]),
+    head: [["Data", "Dia", "Status", "Horário", "Horas", "Job", "Cliente"]],
+    body: rows.map(r => [fmtDate(r.date), r.dow, r.status, r.time || "-", r.hours || "-", r.job || "-", r.client || "-"]),
     styles: { fontSize: 8 },
     headStyles: { fillColor: [124,106,247] },
-    columnStyles: { 3: { cellWidth: 90 } }
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 12 }, 2: { cellWidth: 18 }, 3: { cellWidth: 30 }, 4: { cellWidth: 13 } }
   });
 
   doc.save(`disponibilidade-${ymd(start)}-a-${ymd(end)}.pdf`);
@@ -1511,6 +1702,9 @@ function bindRowActions(tbody) {
 // ─────────────────────────────────────────────
 let jobModalDates = [];
 let jobModalHours = {};   // { "YYYY-MM-DD": horas }
+let jobModalTimes = {};   // { "YYYY-MM-DD": { start: "09:00", end: "17:00" } }
+let jobShowTimes = false; // mostra os campos de horário nas linhas de data
+let jobAutoHours = {};    // horas calculadas automaticamente (início→fim), para não sobrescrever o que o usuário digitou
 let jobPricingMode = "fixo"; // "fixo" | "diaria" | "hora"
 let jobPaymentType = "total"; // "total" | "parcial"
 
@@ -1526,6 +1720,9 @@ function openJobModal(jobId = null) {
     const existingDates = jobDatesArray(j);
     jobModalDates = existingDates.length ? existingDates : [today()];
     jobModalHours = { ...(j.hours || {}) };
+    jobModalTimes = JSON.parse(JSON.stringify(j.times || {}));
+    jobShowTimes = hasJobTimes(j);
+    jobAutoHours = {};
     jobPricingMode = j.pricingMode || "fixo";
     jobPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
     $("jobName").value = j.name || "";
@@ -1539,6 +1736,9 @@ function openJobModal(jobId = null) {
   } else {
     jobModalDates = [today()];
     jobModalHours = {};
+    jobModalTimes = {};
+    jobShowTimes = false;
+    jobAutoHours = {};
     jobPricingMode = "fixo";
     jobPaymentType = "total";
     $("jobName").value = "";
@@ -1551,6 +1751,7 @@ function openJobModal(jobId = null) {
     $("jobPaidAmount").value = "";
   }
 
+  $("jobShowTimes").checked = jobShowTimes;
   setPricingMode(jobPricingMode);
   setPaymentType(jobPaymentType);
   togglePayDateField();
@@ -1571,6 +1772,12 @@ function duplicateJob(jobId) {
 
   jobModalDates = [today()];
   jobModalHours = {};
+  jobModalTimes = {};
+  jobAutoHours = {};
+  const firstTime = j.times?.[jobDatesArray(j)[0]];
+  if (firstTime && (firstTime.start || firstTime.end)) jobModalTimes[today()] = { start: firstTime.start || "", end: firstTime.end || "" };
+  jobShowTimes = Object.keys(jobModalTimes).length > 0;
+  $("jobShowTimes").checked = jobShowTimes;
   jobPricingMode = j.pricingMode || "fixo";
   jobPaymentType = "total";
 
@@ -1615,6 +1822,7 @@ function setPricingMode(mode) {
   $("calcTotalField").classList.toggle("hidden", mode === "fixo");
   $("valueRateLabel").textContent = mode === "hora" ? "Valor da Hora (R$) *" : "Valor da Diária (R$) *";
   $("jobValue").readOnly = mode !== "fixo";
+  if (mode === "hora") jobModalDates.forEach(autoFillHours);
   renderJobDateRows();
   recalcJobValue();
 }
@@ -1647,14 +1855,39 @@ function recalcJobValue() {
 // ─────────────────────────────────────────────
 // MULTI-DATA (diárias) NO MODAL DE JOB
 // ─────────────────────────────────────────────
+// Preenche as horas do dia (job por hora) a partir de início→fim, se o campo estiver vazio
+// ou ainda com o último valor calculado automaticamente
+function autoFillHours(d) {
+  if (jobPricingMode !== "hora") return;
+  const t = jobModalTimes[d];
+  const h = hoursBetween(t?.start, t?.end);
+  if (!(h > 0)) return;
+  const cur = jobModalHours[d];
+  if (cur === undefined || cur === null || cur === "" || String(cur) === String(jobAutoHours[d])) {
+    jobModalHours[d] = String(h);
+    jobAutoHours[d] = h;
+  }
+}
+
+on("jobShowTimes", "change", () => {
+  jobShowTimes = $("jobShowTimes").checked;
+  renderJobDateRows();
+});
+
 function renderJobDateRows() {
   const list = $("jobDatesList");
   const showHours = jobPricingMode === "hora";
   list.innerHTML = jobModalDates.map((d, i) => `
-    <div class="job-date-row">
-      <input type="date" class="job-date-input" data-idx="${i}" value="${d || ""}" />
-      ${showHours ? `<input type="number" class="job-date-hours" data-idx="${i}" placeholder="Horas" min="0" step="0.5" value="${jobModalHours[d] ?? ""}" />` : ""}
-      <button type="button" class="job-date-remove" data-idx="${i}" title="Remover diária" ${jobModalDates.length <= 1 ? "disabled" : ""}>✕</button>
+    <div class="job-date-block">
+      <div class="job-date-row">
+        <input type="date" class="job-date-input" data-idx="${i}" value="${d || ""}" />
+        ${showHours ? `<input type="number" class="job-date-hours" data-idx="${i}" placeholder="Horas" min="0" step="0.25" value="${jobModalHours[d] ?? ""}" />` : ""}
+        <button type="button" class="job-date-remove" data-idx="${i}" title="Remover diária" ${jobModalDates.length <= 1 ? "disabled" : ""}>✕</button>
+      </div>
+      ${jobShowTimes ? `<div class="job-date-times">
+        <span>Início</span><input type="time" class="job-date-time" data-idx="${i}" data-which="start" value="${jobModalTimes[d]?.start || ""}" />
+        <span>Fim</span><input type="time" class="job-date-time" data-idx="${i}" data-which="end" value="${jobModalTimes[d]?.end || ""}" />
+      </div>` : ""}
     </div>`).join("");
 
   list.querySelectorAll(".job-date-input").forEach(inp => {
@@ -1666,6 +1899,14 @@ function renderJobDateRows() {
       if (jobPricingMode === "hora" && oldDate in jobModalHours) {
         jobModalHours[newDate] = jobModalHours[oldDate];
         delete jobModalHours[oldDate];
+      }
+      if (oldDate in jobModalTimes) {
+        jobModalTimes[newDate] = jobModalTimes[oldDate];
+        delete jobModalTimes[oldDate];
+      }
+      if (oldDate in jobAutoHours) {
+        jobAutoHours[newDate] = jobAutoHours[oldDate];
+        delete jobAutoHours[oldDate];
       }
       jobModalDates[idx] = newDate;
       recalcJobValue();
@@ -1679,6 +1920,22 @@ function renderJobDateRows() {
       recalcJobValue();
     });
   });
+  list.querySelectorAll(".job-date-time").forEach(inp => {
+    inp.addEventListener("input", e => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      const d = jobModalDates[idx];
+      if (!d) return;
+      const cur = jobModalTimes[d] || { start: "", end: "" };
+      cur[e.target.dataset.which] = e.target.value;
+      if (!cur.start && !cur.end) delete jobModalTimes[d]; else jobModalTimes[d] = cur;
+
+      // Job por hora: calcula as horas a partir de início→fim (sem sobrescrever o que o usuário digitou)
+      autoFillHours(d);
+      const hi = list.querySelector(`.job-date-hours[data-idx="${idx}"]`);
+      if (hi) hi.value = jobModalHours[d] ?? "";
+      recalcJobValue();
+    });
+  });
   list.querySelectorAll(".job-date-remove").forEach(btn => {
     btn.addEventListener("click", () => {
       if (jobModalDates.length <= 1) return;
@@ -1686,6 +1943,8 @@ function renderJobDateRows() {
       const [removed] = jobModalDates.splice(idx, 1);
       jobDatesPristine = false;
       delete jobModalHours[removed];
+      delete jobModalTimes[removed];
+      delete jobAutoHours[removed];
       renderJobDateRows();
       recalcJobValue();
     });
@@ -1761,6 +2020,8 @@ on("toggleRangeBtn", "click", () => {
   $("rangeFrom").value = from;
   $("rangeTo").value = "";
   $("rangeSkipWeekends").checked = false;
+  $("rangeStartTime").value = "";
+  $("rangeEndTime").value = "";
   updateRangePreview();
 });
 on("rangeFrom", "change", updateRangePreview);
@@ -1781,6 +2042,13 @@ on("rangeApplyBtn", "click", () => {
   const base = jobDatesPristine ? [] : jobModalDates.filter(Boolean);
   jobModalDates = [...new Set([...base, ...dates])].sort();
   jobDatesPristine = false;
+
+  const rs = $("rangeStartTime").value, re = $("rangeEndTime").value;
+  if (rs || re) {
+    jobShowTimes = true;
+    $("jobShowTimes").checked = true;
+    dates.forEach(d => { jobModalTimes[d] = { start: rs, end: re }; autoFillHours(d); });
+  }
   resetRangePanel();
   renderJobDateRows();
   recalcJobValue();
@@ -1799,6 +2067,8 @@ function captureJobDraftData() {
     savedAt: Date.now(),
     dates: jobModalDates,
     hours: jobModalHours,
+    times: jobModalTimes,
+    showTimes: jobShowTimes,
     pricingMode: jobPricingMode,
     paymentType: jobPaymentType,
     name: $("jobName").value,
@@ -1855,6 +2125,10 @@ function checkJobDraft() {
 function restoreJobDraft(draft) {
   jobModalDates = draft.dates?.length ? draft.dates : [today()];
   jobModalHours = draft.hours || {};
+  jobModalTimes = draft.times || {};
+  jobShowTimes = !!draft.showTimes;
+  jobAutoHours = {};
+  $("jobShowTimes").checked = jobShowTimes;
   jobPricingMode = draft.pricingMode || "fixo";
   jobPaymentType = draft.paymentType || "total";
   $("jobName").value = draft.name || "";
@@ -1990,6 +2264,11 @@ on("saveJobBtn", "click", async () => {
       pricingMode: jobPricingMode,
       rate: jobPricingMode === "fixo" ? null : rate,
       hours: jobPricingMode === "hora" ? dates.reduce((o, d) => { o[d] = parseFloat(jobModalHours[d]) || 0; return o; }, {}) : null,
+      times: jobShowTimes ? dates.reduce((o, d) => {
+        const t = jobModalTimes[d];
+        if (t && (t.start || t.end)) o[d] = { start: t.start || "", end: t.end || "" };
+        return o;
+      }, {}) : {},
       paymentType,
       paidAmount,
       updatedAt: new Date()
@@ -3027,9 +3306,9 @@ function renderTopClientes() {
 on("repExportExcel", "click", () => {
   const jobs = getReportJobs();
   const meta = exportMeta("Relatório Financeiro", reportPeriodLabel() || "Todos os períodos");
-  const headerRow = ["Data","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
+  const headerRow = ["Data","Horário","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
   const dataRows = jobs.map(j => [
-    fmtJobDatesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
+    fmtJobDatesPlain(j), jobTimesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => fmtDate(n.date)).join("; "),
     receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
     j.notes || ""
@@ -3048,19 +3327,7 @@ on("repExportPDF", "click", () => {
   const startY = pdfHeader(doc, meta);
 
   const jobs = getReportJobs();
-  const total = jobs.reduce((a,j)=>a+Number(j.value||0),0);
-  const totalPago = jobs.reduce((a,j)=>a+paidAmountOf(j),0);
-  const totalPendente = jobs.reduce((a,j)=>a+pendingAmountOf(j),0);
-
-  doc.autoTable({
-    startY,
-    head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
-    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)]),
-    foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [124,106,247] },
-    footStyles: { fontStyle: "bold" }
-  });
+  pdfJobsTable(doc, jobs, startY);
 
   const label = reportPeriodLabel().replace(/\s+/g, "_") || "geral";
   doc.save(`relatorio-${label}.pdf`);
@@ -3149,9 +3416,9 @@ function updateMEIAlert() {
 on("exportCSV", "click", () => {
   const jobs = getFilteredJobs();
   const meta = exportMeta("Lista de Jobs", jobsFilterLabel());
-  const header = ["Data(s)","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
+  const header = ["Data(s)","Horário","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
   const rows = jobs.map(j => [
-    jobDatesArray(j).join("; "), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
+    jobDatesArray(j).join("; "), jobTimesPlain(j), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), receiptsArray(j).map(r => r.number).filter(Boolean).join("; "), j.notes || ""
   ]);
   const all = [...metaRowsAOA(meta), header, ...rows];
@@ -3162,9 +3429,9 @@ on("exportCSV", "click", () => {
 on("exportExcel", "click", () => {
   const jobs = getFilteredJobs();
   const meta = exportMeta("Lista de Jobs", jobsFilterLabel());
-  const headerRow = ["Data","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
+  const headerRow = ["Data","Horário","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
   const dataRows = jobs.map(j => [
-    fmtJobDatesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
+    fmtJobDatesPlain(j), jobTimesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => fmtDate(n.date)).join("; "),
     receiptsArray(j).map(r => r.number).filter(Boolean).join("; ") || (j.status === "pago_recibo" ? "Sim" : ""),
     j.notes || ""
@@ -3182,19 +3449,7 @@ on("exportPDF", "click", () => {
   const startY = pdfHeader(doc, meta);
 
   const jobs = getFilteredJobs();
-  const total = jobs.reduce((a,j)=>a+Number(j.value||0),0);
-  const totalPago = jobs.reduce((a,j)=>a+paidAmountOf(j),0);
-  const totalPendente = jobs.reduce((a,j)=>a+pendingAmountOf(j),0);
-
-  doc.autoTable({
-    startY,
-    head: [["Data","Job","Cliente","Valor","Pago","Pendente","Status"]],
-    body: jobs.map(j => [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)]),
-    foot: [["","","","TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [124,106,247] },
-    footStyles: { fontStyle: "bold" }
-  });
+  pdfJobsTable(doc, jobs, startY);
 
   doc.save("controle-jobs.pdf");
 });
@@ -3261,6 +3516,34 @@ function jobsFilterLabel() {
   if (fNF === "sem") parts.push("Sem NF/Recibo");
   if (fSearch) parts.push(`Busca: "${fSearch}"`);
   return parts.length ? parts.join(" · ") : "Todos os jobs";
+}
+
+// Tabela de jobs para PDF (Meus Jobs, Relatórios). A coluna "Horário" só aparece se algum job a tiver.
+function pdfJobsTable(doc, jobs, startY) {
+  const total = jobs.reduce((a, j) => a + Number(j.value || 0), 0);
+  const totalPago = jobs.reduce((a, j) => a + paidAmountOf(j), 0);
+  const totalPendente = jobs.reduce((a, j) => a + pendingAmountOf(j), 0);
+  const withTimes = jobs.some(hasJobTimes);
+
+  const head = withTimes
+    ? ["Data", "Horário", "Job", "Cliente", "Valor", "Pago", "Pendente", "Status"]
+    : ["Data", "Job", "Cliente", "Valor", "Pago", "Pendente", "Status"];
+  const body = jobs.map(j => {
+    const row = [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)];
+    if (withTimes) row.splice(1, 0, jobTimesPlain(j) || "-");
+    return row;
+  });
+  const foot = [[...Array(withTimes ? 4 : 3).fill(""), "TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]];
+
+  doc.autoTable({
+    startY,
+    head,
+    body,
+    foot,
+    styles: { fontSize: withTimes ? 8 : 9 },
+    headStyles: { fillColor: [124, 106, 247] },
+    footStyles: { fontStyle: "bold" }
+  });
 }
 
 function downloadFile(content, filename, type) {

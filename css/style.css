@@ -1072,8 +1072,8 @@ button.badge:hover { filter: brightness(1.25); }
 
   .modal { max-height: 95vh; }
 
-  .jobs-table:not(.has-select) th:nth-child(5),
-  .jobs-table:not(.has-select) td:nth-child(5),
+  .jobs-table:not(.has-select):not(.keep-cols) th:nth-child(5),
+  .jobs-table:not(.has-select):not(.keep-cols) td:nth-child(5),
   .jobs-table.has-select th:nth-child(6),
   .jobs-table.has-select td:nth-child(6) { display: none; }
 }
@@ -2013,3 +2013,23 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
   gap: 14px;
   flex-wrap: wrap;
 }
+
+
+/* Horário (início/fim) por diária no modal de Job */
+.job-times-toggle { margin-bottom: 8px; }
+.job-date-block { display: flex; flex-direction: column; gap: 4px; }
+.job-date-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-left: 4px;
+  font-size: 12px;
+  color: var(--text2);
+}
+.job-date-times input[type="time"] { width: 120px; flex: none; }
+
+
+.calendar-agenda-list-card { margin-top: 20px; }
+.calendar-agenda-list-card .section-hint { margin-bottom: 10px; }
+.jobs-table tr.agenda-row-today td { background: var(--accent-dim); }

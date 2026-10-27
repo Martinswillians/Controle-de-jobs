@@ -1098,7 +1098,8 @@ on("pendingExportPDF", "click", () => {
 
   doc.autoTable({
     startY,
-    head, body, foot,
+    head: [head], body, foot,
+    columnStyles: pdfWrapCols(withTimes ? [0, 1, 4, 5, 6] : [0, 3, 4, 5]),
     styles: { fontSize: withTimes ? 8 : 9 },
     headStyles: { fillColor: [124, 106, 247] },
     footStyles: { fontStyle: "bold" }
@@ -1445,10 +1446,10 @@ on("calExportPDF", "click", () => {
   const rows = buildAvailabilityRows(start, end);
   const { free, busy, total } = availabilityCounts(rows);
   doc.setFontSize(10);
-  doc.text(`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${total} dias no total`, 14, startY - 4);
+  doc.text(`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${total} dias no total`, 14, startY + 2);
 
   doc.autoTable({
-    startY: startY + 2,
+    startY: startY + 6,
     head: [["Data", "Dia", "Status", "Horário", "Horas", "Job", "Cliente"]],
     body: rows.map(r => [fmtDate(r.date), r.dow, r.status, r.time || "-", r.hours || "-", r.job || "-", r.client || "-"]),
     styles: { fontSize: 8 },
@@ -1703,7 +1704,6 @@ function bindRowActions(tbody) {
 let jobModalDates = [];
 let jobModalHours = {};   // { "YYYY-MM-DD": horas }
 let jobModalTimes = {};   // { "YYYY-MM-DD": { start: "09:00", end: "17:00" } }
-let jobShowTimes = false; // mostra os campos de horário nas linhas de data
 let jobAutoHours = {};    // horas calculadas automaticamente (início→fim), para não sobrescrever o que o usuário digitou
 let jobPricingMode = "fixo"; // "fixo" | "diaria" | "hora"
 let jobPaymentType = "total"; // "total" | "parcial"
@@ -1721,7 +1721,6 @@ function openJobModal(jobId = null) {
     jobModalDates = existingDates.length ? existingDates : [today()];
     jobModalHours = { ...(j.hours || {}) };
     jobModalTimes = JSON.parse(JSON.stringify(j.times || {}));
-    jobShowTimes = hasJobTimes(j);
     jobAutoHours = {};
     jobPricingMode = j.pricingMode || "fixo";
     jobPaymentType = j.paymentType === "parcial" ? "parcial" : "total";
@@ -1737,7 +1736,6 @@ function openJobModal(jobId = null) {
     jobModalDates = [today()];
     jobModalHours = {};
     jobModalTimes = {};
-    jobShowTimes = false;
     jobAutoHours = {};
     jobPricingMode = "fixo";
     jobPaymentType = "total";
@@ -1751,7 +1749,6 @@ function openJobModal(jobId = null) {
     $("jobPaidAmount").value = "";
   }
 
-  $("jobShowTimes").checked = jobShowTimes;
   setPricingMode(jobPricingMode);
   setPaymentType(jobPaymentType);
   togglePayDateField();
@@ -1776,8 +1773,6 @@ function duplicateJob(jobId) {
   jobAutoHours = {};
   const firstTime = j.times?.[jobDatesArray(j)[0]];
   if (firstTime && (firstTime.start || firstTime.end)) jobModalTimes[today()] = { start: firstTime.start || "", end: firstTime.end || "" };
-  jobShowTimes = Object.keys(jobModalTimes).length > 0;
-  $("jobShowTimes").checked = jobShowTimes;
   jobPricingMode = j.pricingMode || "fixo";
   jobPaymentType = "total";
 
@@ -1869,11 +1864,6 @@ function autoFillHours(d) {
   }
 }
 
-on("jobShowTimes", "change", () => {
-  jobShowTimes = $("jobShowTimes").checked;
-  renderJobDateRows();
-});
-
 function renderJobDateRows() {
   const list = $("jobDatesList");
   const showHours = jobPricingMode === "hora";
@@ -1884,10 +1874,11 @@ function renderJobDateRows() {
         ${showHours ? `<input type="number" class="job-date-hours" data-idx="${i}" placeholder="Horas" min="0" step="0.25" value="${jobModalHours[d] ?? ""}" />` : ""}
         <button type="button" class="job-date-remove" data-idx="${i}" title="Remover diária" ${jobModalDates.length <= 1 ? "disabled" : ""}>✕</button>
       </div>
-      ${jobShowTimes ? `<div class="job-date-times">
-        <span>Início</span><input type="time" class="job-date-time" data-idx="${i}" data-which="start" value="${jobModalTimes[d]?.start || ""}" />
-        <span>Fim</span><input type="time" class="job-date-time" data-idx="${i}" data-which="end" value="${jobModalTimes[d]?.end || ""}" />
-      </div>` : ""}
+      <div class="job-date-times">
+        <span class="job-date-times-label">🕐 Horário reservado</span>
+        <span>das</span><input type="time" class="job-date-time" data-idx="${i}" data-which="start" title="Início" value="${jobModalTimes[d]?.start || ""}" />
+        <span>às</span><input type="time" class="job-date-time" data-idx="${i}" data-which="end" title="Fim" value="${jobModalTimes[d]?.end || ""}" />
+      </div>
     </div>`).join("");
 
   list.querySelectorAll(".job-date-input").forEach(inp => {
@@ -2045,8 +2036,6 @@ on("rangeApplyBtn", "click", () => {
 
   const rs = $("rangeStartTime").value, re = $("rangeEndTime").value;
   if (rs || re) {
-    jobShowTimes = true;
-    $("jobShowTimes").checked = true;
     dates.forEach(d => { jobModalTimes[d] = { start: rs, end: re }; autoFillHours(d); });
   }
   resetRangePanel();
@@ -2068,7 +2057,6 @@ function captureJobDraftData() {
     dates: jobModalDates,
     hours: jobModalHours,
     times: jobModalTimes,
-    showTimes: jobShowTimes,
     pricingMode: jobPricingMode,
     paymentType: jobPaymentType,
     name: $("jobName").value,
@@ -2126,9 +2114,7 @@ function restoreJobDraft(draft) {
   jobModalDates = draft.dates?.length ? draft.dates : [today()];
   jobModalHours = draft.hours || {};
   jobModalTimes = draft.times || {};
-  jobShowTimes = !!draft.showTimes;
   jobAutoHours = {};
-  $("jobShowTimes").checked = jobShowTimes;
   jobPricingMode = draft.pricingMode || "fixo";
   jobPaymentType = draft.paymentType || "total";
   $("jobName").value = draft.name || "";
@@ -2264,11 +2250,11 @@ on("saveJobBtn", "click", async () => {
       pricingMode: jobPricingMode,
       rate: jobPricingMode === "fixo" ? null : rate,
       hours: jobPricingMode === "hora" ? dates.reduce((o, d) => { o[d] = parseFloat(jobModalHours[d]) || 0; return o; }, {}) : null,
-      times: jobShowTimes ? dates.reduce((o, d) => {
+      times: dates.reduce((o, d) => {
         const t = jobModalTimes[d];
         if (t && (t.start || t.end)) o[d] = { start: t.start || "", end: t.end || "" };
         return o;
-      }, {}) : {},
+      }, {}),
       paymentType,
       paidAmount,
       updatedAt: new Date()
@@ -3518,6 +3504,11 @@ function jobsFilterLabel() {
   return parts.length ? parts.join(" · ") : "Todos os jobs";
 }
 
+// Colunas do autoTable que devem ter a largura do conteúdo (sem quebrar linha)
+function pdfWrapCols(indices) {
+  return Object.fromEntries(indices.map(i => [i, { cellWidth: "wrap" }]));
+}
+
 // Tabela de jobs para PDF (Meus Jobs, Relatórios). A coluna "Horário" só aparece se algum job a tiver.
 function pdfJobsTable(doc, jobs, startY) {
   const total = jobs.reduce((a, j) => a + Number(j.value || 0), 0);
@@ -3533,13 +3524,14 @@ function pdfJobsTable(doc, jobs, startY) {
     if (withTimes) row.splice(1, 0, jobTimesPlain(j) || "-");
     return row;
   });
-  const foot = [[...Array(withTimes ? 4 : 3).fill(""), "TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente)]];
+  const foot = [[...Array(withTimes ? 3 : 2).fill(""), "TOTAL", fmt(total), fmt(totalPago), fmt(totalPendente), ""]];
 
   doc.autoTable({
     startY,
-    head,
+    head: [head],
     body,
     foot,
+    columnStyles: pdfWrapCols(withTimes ? [0, 1, 4, 5, 6, 7] : [0, 3, 4, 5, 6]),
     styles: { fontSize: withTimes ? 8 : 9 },
     headStyles: { fillColor: [124, 106, 247] },
     footStyles: { fontStyle: "bold" }

@@ -2,7 +2,7 @@
 // Service Worker — Controle de Job (Atualizado)
 // ═══════════════════════════════════════════════
 // Mude essa versão sempre que fizer uma grande atualização no código do app
-const CACHE_NAME = "jobcontrol-v4.18";
+const CACHE_NAME = "jobcontrol-v4.19";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,9 @@ const STATIC_ASSETS = [
   "./js/firebase-config.js",
   "./js/clients.js",
   "./js/access.js",
+  "./js/domain.js",
+  "./js/logger.js",
+  "./js/cloudinary.js",
   "./manifest.json",
   "./favicon.ico",
   "./assets/icon-192.png",

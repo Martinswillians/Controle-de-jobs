@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=42" />
+  <link rel="stylesheet" href="css/style.css?v=44" />
   <script>
     (function () {
       try {
@@ -68,18 +68,8 @@
       </div>
       <div class="field">
         <label>Profissão</label>
-        <select id="regProfession">
-          <option value="">Selecione...</option>
-          <option>Videomaker</option>
-          <option>Operador de Câmera</option>
-          <option>Fotógrafo</option>
-          <option>Editor de Vídeo</option>
-          <option>Técnico de Som</option>
-          <option>Iluminador</option>
-          <option>Diretor</option>
-          <option>Produtor</option>
-          <option>Outro</option>
-        </select>
+        <select id="regProfession"></select>
+        <input type="text" id="regProfessionOther" class="hidden" maxlength="60" placeholder="Qual é a sua profissão?" style="margin-top:8px" />
       </div>
       <button class="btn-primary" id="registerBtn">Criar conta</button>
     </div>
@@ -124,7 +114,7 @@
       <li><a href="#" class="nav-link" data-page="reports">📈 Relatórios</a></li>
       <li><a href="#" class="nav-link" data-page="clients">🏢 Clientes</a></li>
       <li><a href="#" class="nav-link" data-page="mei">⚠️ Limite MEI</a></li>
-      <li><a href="#" class="nav-link" data-page="logs">🗒️ Logs</a></li>
+      <li><a href="#" class="nav-link" data-page="logs">🗒️ Histórico</a></li>
       <li><a href="#" class="nav-link" data-page="settings">⚙️ Configurações</a></li>
     </ul>
     <div class="sidebar-footer">
@@ -202,6 +192,10 @@
         <div class="card card-neutral">
           <div class="card-label">Ticket Médio</div>
           <div class="card-value" id="cardTicket">R$ 0,00</div>
+        </div>
+        <div class="card card-green hidden" id="cardGanhoWrap">
+          <div class="card-label" id="cardGanhoLabel">Meu ganho no Mês</div>
+          <div class="card-value" id="cardGanho">R$ 0,00</div>
         </div>
       </div>
 
@@ -633,25 +627,42 @@
     <!-- ─── LOGS ─── -->
     <div id="page-logs" class="page">
       <div class="page-header">
-        <h2>Logs de Exclusão</h2>
+        <h2>Histórico de Alterações</h2>
+        <span id="logsCount" class="section-hint"></span>
       </div>
-      <div class="table-wrap">
-        <table class="jobs-table" id="logsTable">
-          <thead>
-            <tr>
-              <th>Data/Hora</th>
-              <th>Usuário</th>
-              <th>Job</th>
-              <th>Valor</th>
-              <th>Motivo</th>
-            </tr>
-          </thead>
-          <tbody id="logsBody"></tbody>
-        </table>
-      </div>
-      <div id="logsEmpty" class="empty-state hidden">
-        <span>🗒️</span>
-        <p>Nenhuma exclusão registrada ainda.</p>
+      <div class="section-card">
+        <div class="admin-pills" id="logActionPills">
+          <button class="admin-pill active" data-action="all">Todos</button>
+          <button class="admin-pill" data-action="create">➕ Inclusões</button>
+          <button class="admin-pill" data-action="update">✏️ Alterações</button>
+          <button class="admin-pill" data-action="delete">🗑️ Exclusões</button>
+        </div>
+        <div class="field" style="max-width:240px;margin-bottom:12px">
+          <select id="logEntityFilter">
+            <option value="all">Todos os itens</option>
+            <option value="job">Jobs</option>
+            <option value="client">Clientes</option>
+            <option value="profile">Perfil</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table class="jobs-table" id="logsTable">
+            <thead>
+              <tr>
+                <th>Data/Hora</th>
+                <th>Ação</th>
+                <th>Item</th>
+                <th>Detalhes</th>
+                <th>Usuário</th>
+              </tr>
+            </thead>
+            <tbody id="logsBody"></tbody>
+          </table>
+        </div>
+        <div id="logsEmpty" class="empty-state hidden">
+          <span>🗒️</span>
+          <p>Nenhum registro no histórico ainda.</p>
+        </div>
       </div>
     </div>
 
@@ -668,21 +679,35 @@
         </div>
         <div class="field">
           <label>Profissão</label>
-          <select id="settingProfession">
-            <option>Videomaker</option>
-            <option>Operador de Câmera</option>
-            <option>Fotógrafo</option>
-            <option>Editor de Vídeo</option>
-            <option>Técnico de Som</option>
-            <option>Iluminador</option>
-            <option>Diretor</option>
-            <option>Produtor</option>
-            <option>Outro</option>
-          </select>
+          <select id="settingProfession"></select>
+          <input type="text" id="settingProfessionOther" class="hidden" maxlength="60" placeholder="Qual é a sua profissão?" style="margin-top:8px" />
         </div>
         <div class="field">
           <label>Número CNPJ MEI</label>
           <input type="text" id="settingCNPJ" placeholder="00.000.000/0001-00" />
+        </div>
+        <div class="field">
+          <label>Ramo de trabalho</label>
+          <div class="mode-toggle" id="branchToggle">
+            <button type="button" class="mode-btn active" data-branch="audiovisual">🎬 Audiovisual / Gravações</button>
+            <button type="button" class="mode-btn" data-branch="servicos">🛠️ Prestação de Serviços</button>
+          </div>
+          <p class="section-hint" data-notranslate style="margin-top:6px">Audiovisual usa "Job". Prestação de Serviços (ex.: dedetização, elétrica, administrativo) usa "Serviço" em todo o app. Ao trocar o ramo, o app recarrega.</p>
+        </div>
+        <div class="field">
+          <label class="checkbox-inline"><input type="checkbox" id="settingTrackEarnings" /> Controlar quanto eu ganho em cada trabalho</label>
+        </div>
+        <div class="field hidden" id="settingEarningBox">
+          <label>Ganho padrão ao cadastrar <span class="field-hint">— você ajusta em cada job/serviço</span></label>
+          <div class="mode-toggle" id="settingEarningModeToggle">
+            <button type="button" class="mode-btn active" data-emode="total">💯 Valor total</button>
+            <button type="button" class="mode-btn" data-emode="fixo">💰 Valor fixo</button>
+            <button type="button" class="mode-btn" data-emode="percentual">％ Percentual</button>
+          </div>
+          <div class="earning-row hidden" id="settingEarningAmountWrap">
+            <input type="number" id="settingEarningAmount" step="0.01" min="0" placeholder="0,00" />
+            <span id="settingEarningUnit" class="earning-unit">R$</span>
+          </div>
         </div>
         <button class="btn-primary" id="saveSettings">Salvar</button>
       </div>
@@ -695,7 +720,7 @@
       </div>
       <div class="section-card">
         <h3>Backup dos dados</h3>
-        <p class="section-hint">Baixe uma cópia completa dos seus dados (jobs, clientes, NFs, recibos, logs de exclusão e perfil) em um arquivo JSON. Guarde em um local seguro: o arquivo contém informações dos seus clientes.</p>
+        <p class="section-hint">Baixe uma cópia completa dos seus dados (jobs, clientes, NFs, recibos, histórico de alterações, logs de exclusão e perfil) em um arquivo JSON. Guarde em um local seguro: o arquivo contém informações dos seus clientes.</p>
         <div class="backup-actions">
           <button class="btn-primary btn-sm" id="backupBtn">💾 Baixar backup completo</button>
           <span class="backup-last" id="backupLast"></span>
@@ -786,6 +811,19 @@
         <div class="field hidden" id="calcTotalField">
           <label>Valor Total do Job (calculado)</label>
           <div class="calc-total-box" id="calcTotalBox">R$ 0,00</div>
+        </div>
+        <div class="field field-full hidden" id="earningField">
+          <label>Quanto você ganha neste job?</label>
+          <div class="mode-toggle" id="earningModeToggle">
+            <button type="button" class="mode-btn active" data-emode="total">💯 Valor total</button>
+            <button type="button" class="mode-btn" data-emode="fixo">💰 Valor fixo</button>
+            <button type="button" class="mode-btn" data-emode="percentual">％ Percentual</button>
+          </div>
+          <div class="earning-row hidden" id="earningInputRow">
+            <input type="number" id="jobEarningAmount" step="0.01" min="0" placeholder="0,00" />
+            <span id="earningUnit" class="earning-unit">R$</span>
+          </div>
+          <div class="pending-hint" id="earningHint"></div>
         </div>
         <div class="field field-full">
           <label>Nome do Job *</label>
@@ -1279,9 +1317,9 @@
 </div>
 
 <!-- Firebase -->
-<script type="module" src="js/firebase-config.js?v=42"></script>
-<script type="module" src="js/app.js?v=42"></script>
-<script type="module" src="js/clients.js?v=42"></script>
+<script type="module" src="js/firebase-config.js?v=44"></script>
+<script type="module" src="js/app.js?v=44"></script>
+<script type="module" src="js/clients.js?v=44"></script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>

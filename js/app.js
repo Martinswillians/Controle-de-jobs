@@ -28,6 +28,17 @@ import {
   showDemoBanner, initAdminPanel, initAdminActions, ADMIN_UID
 } from "./access.js";
 
+import {
+  OTHER_VALUE, TERM, loadCustomProfessions, buildProfessionSelect, bindProfessionOther,
+  resolveProfession, addProfessionToDomain, branchForProfession,
+  setWorkProfile, isEarningsEnabled, getDefaultEarning, earningFor, earningOf, hasEarningRule
+} from "./domain.js";
+
+import {
+  setLogUser, logActivity, logJobCreated, logJobUpdated, diffJob, diffClient, diffProfile,
+  jobSnapshot, activityRef, activityPayload, renderLogs
+} from "./logger.js";
+
 // ─────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────
@@ -461,14 +472,40 @@ function valueInlineText(j) {
   return base;
 }
 
-// Célula de valor da tabela, com detalhe de pago/pendente quando parcial
+// Célula de valor da tabela + "Seu ganho" quando o usuário controla o ganho e o job tem regra própria
 function valueCellHtml(j) {
+  let html = valueCellBaseHtml(j);
+  if (isEarningsEnabled() && hasEarningRule(j)) {
+    html += `<div class="value-parcial-hint earning-hint">💼 Seu ganho: ${fmt(earningOf(j))}</div>`;
+  }
+  return html;
+}
+
+// Célula de valor da tabela, com detalhe de pago/pendente quando parcial
+function valueCellBaseHtml(j) {
   const total = Number(j.value || 0);
   if (!isPendingStatus(j.status) && j.paymentType === "parcial") {
     return `${fmt(total)}<div class="value-parcial-hint">Pago ${fmt(paidAmountOf(j))} · Falta ${fmt(pendingAmountOf(j))}</div>`;
   }
   return fmt(total);
 }
+
+// ─────────────────────────────────────────────
+// PROFISSÕES (cadastro e configurações)
+// ─────────────────────────────────────────────
+function refreshProfessionSelects() {
+  [["regProfession", true], ["settingProfession", false]].forEach(([id, ph]) => {
+    const sel = $(id);
+    if (!sel) return;
+    const cur = sel.value;
+    buildProfessionSelect(sel, { withPlaceholder: ph, current: cur === OTHER_VALUE ? "" : cur });
+    if (cur === OTHER_VALUE) sel.value = OTHER_VALUE;
+  });
+}
+refreshProfessionSelects();
+bindProfessionOther($("regProfession"), $("regProfessionOther"));
+bindProfessionOther($("settingProfession"), $("settingProfessionOther"));
+loadCustomProfessions().then(refreshProfessionSelects);
 
 // ─────────────────────────────────────────────
 // AUTH
@@ -489,13 +526,16 @@ on("registerBtn", "click", async () => {
   const name = $("regName").value.trim();
   const email = $("regEmail").value.trim();
   const pass = $("regPassword").value;
-  const prof = $("regProfession").value;
-  if (!name || !email || !pass || !prof) return showMsg("Preencha todos os campos.", "error");
+  const profRes = resolveProfession($("regProfession"), $("regProfessionOther"));
+  if (!name || !email || !pass) return showMsg("Preencha todos os campos.", "error");
+  if (profRes.error) return showMsg(profRes.error, "error");
+  const prof = profRes.name;
   if (pass.length < 6) return showMsg("Senha deve ter pelo menos 6 caracteres.", "error");
   loading(true);
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    await setDoc(doc(db, "users", cred.user.uid), { name, email, profession: prof, cnpj: "", createdAt: new Date() });
+    await setDoc(doc(db, "users", cred.user.uid), { name, email, profession: prof, cnpj: "", workBranch: branchForProfession(prof), createdAt: new Date() });
+    if (profRes.custom) addProfessionToDomain(prof, cred.user.uid); // entra na lista de profissões
     showMsg("Conta criada! Entrando...", "success");
   } catch (e) {
     showMsg(authError(e.code), "error");
@@ -611,34 +651,111 @@ onAuthStateChanged(auth, async user => {
 // ─────────────────────────────────────────────
 // USER PROFILE
 // ─────────────────────────────────────────────
+let currentProfile = {};
+let settingsBranch = "audiovisual";
+let settingsEarnMode = "total";
+
+function syncBranchSettingsUI() {
+  document.querySelectorAll("#branchToggle .mode-btn").forEach(b => b.classList.toggle("active", b.dataset.branch === settingsBranch));
+  const on = $("settingTrackEarnings").checked;
+  $("settingEarningBox").classList.toggle("hidden", !on);
+  document.querySelectorAll("#settingEarningModeToggle .mode-btn").forEach(b => b.classList.toggle("active", b.dataset.emode === settingsEarnMode));
+  $("settingEarningAmountWrap").classList.toggle("hidden", settingsEarnMode === "total");
+  $("settingEarningUnit").textContent = settingsEarnMode === "percentual" ? "%" : "R$";
+}
+
+document.querySelectorAll("#branchToggle .mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    settingsBranch = btn.dataset.branch;
+    $("settingTrackEarnings").checked = settingsBranch === "servicos"; // sugestão; dá para mudar
+    syncBranchSettingsUI();
+  });
+});
+document.querySelectorAll("#settingEarningModeToggle .mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => { settingsEarnMode = btn.dataset.emode; syncBranchSettingsUI(); });
+});
+on("settingTrackEarnings", "change", syncBranchSettingsUI);
+
 async function loadUserProfile() {
   try {
+    await loadCustomProfessions();
     const snap = await getDoc(doc(db, "users", currentUser.uid));
     if (snap.exists()) {
       const d = snap.data();
+      currentProfile = d;
       currentUserName = d.name || "";
+      setLogUser({ uid: currentUser.uid, email: currentUser.email, name: currentUserName });
       $("userNameDisplay").textContent = d.name?.split(" ")[0] || "";
       $("sidebarName").textContent = d.name || "";
       $("sidebarRole").textContent = d.profession || "";
       $("settingName").value = d.name || "";
-      $("settingProfession").value = d.profession || "";
+      buildProfessionSelect($("settingProfession"), { current: d.profession || "" });
+      $("settingProfessionOther").value = "";
+      $("settingProfessionOther").classList.add("hidden");
       $("settingCNPJ").value = d.cnpj || "";
+
+      const branch = d.workBranch || "audiovisual";
+      setWorkProfile({ branch, trackEarnings: d.trackEarnings, defaultEarning: d.defaultEarning });
+      settingsBranch = branch;
+      settingsEarnMode = d.defaultEarning?.mode || "total";
+      $("settingTrackEarnings").checked = isEarningsEnabled();
+      $("settingEarningAmount").value = d.defaultEarning?.amount || "";
+      syncBranchSettingsUI();
+    } else {
+      setLogUser({ uid: currentUser.uid, email: currentUser.email, name: "" });
     }
   } catch (e) { console.error(e); }
 }
 
 on("saveSettings", "click", async () => {
   const name = $("settingName").value.trim();
-  const profession = $("settingProfession").value;
+  const profRes = resolveProfession($("settingProfession"), $("settingProfessionOther"));
+  if (profRes.error) return showToast(profRes.error, "error");
+  const profession = profRes.name;
   const cnpj = $("settingCNPJ").value.trim();
+
+  const trackEarnings = $("settingTrackEarnings").checked;
+  const amount = parseFloat($("settingEarningAmount").value) || 0;
+  let defaultEarning = null;
+  if (trackEarnings && settingsEarnMode !== "total") {
+    if (amount <= 0) return showToast("Informe o ganho padrão (valor ou percentual) ou escolha \"Valor total\".", "error");
+    if (settingsEarnMode === "percentual" && amount > 100) return showToast("O percentual não pode passar de 100%.", "error");
+    defaultEarning = { mode: settingsEarnMode, amount };
+  }
+
+  const data = { name, profession, cnpj, workBranch: settingsBranch, trackEarnings, defaultEarning };
+  const branchChanged = (currentProfile.workBranch || "audiovisual") !== settingsBranch;
+
   try {
-    await setDoc(doc(db, "users", currentUser.uid), { name, profession, cnpj }, { merge: true });
+    await setDoc(doc(db, "users", currentUser.uid), data, { merge: true });
+    if (profRes.custom) await addProfessionToDomain(profession, currentUser.uid);
+
+    const profileChanges = diffProfile(currentProfile, data);
+    if (profileChanges.length) {
+      await logActivity({
+        action: "update", entityType: "profile", entityId: currentUser.uid,
+        entityName: name || currentUserName, changes: profileChanges
+      });
+    }
+    currentProfile = { ...currentProfile, ...data };
     currentUserName = name;
+    setLogUser({ uid: currentUser.uid, email: currentUser.email, name });
     $("userNameDisplay").textContent = name.split(" ")[0];
     $("sidebarName").textContent = name;
     $("sidebarRole").textContent = profession;
+    buildProfessionSelect($("settingProfession"), { current: profession });
+    $("settingProfessionOther").value = "";
+    $("settingProfessionOther").classList.add("hidden");
+
+    if (branchChanged) {
+      showToast("Ramo alterado! Recarregando o app...");
+      setTimeout(() => location.reload(), 900);
+      return;
+    }
+    setWorkProfile({ branch: settingsBranch, trackEarnings, defaultEarning });
+    refreshAllViews();
     showToast("Configurações salvas!");
-  } catch (e) { showToast("Erro ao salvar.", "error"); }
+  } catch (e) { console.error(e); showToast("Erro ao salvar.", "error"); }
 });
 
 // ─────────────────────────────────────────────
@@ -832,14 +949,22 @@ on("confirmBulkPay", "click", async () => {
   try {
     const uid = currentUser.uid;
     await commitInChunks(jobs, (batch, j) => {
-      batch.update(doc(db, "users", uid, "jobs", j.id), {
+      const upd = {
         status: paidStatusFor(j),
         paymentType: "total",
         paidAmount: Number(j.value || 0),
         payDate: date,
         updatedAt: new Date()
-      });
-    });
+      };
+      batch.update(doc(db, "users", uid, "jobs", j.id), upd);
+      const changes = diffJob(j, { ...j, ...upd });
+      if (changes.length) {
+        batch.set(activityRef(uid), activityPayload({
+          action: "update", entityType: "job", entityId: j.id, entityName: j.name, entityClient: j.client,
+          value: Number(j.value) || 0, changes, summary: "Marcado como pago (em lote)"
+        }));
+      }
+    }, 2);
     selectedJobIds.clear();
     closeBulkPayModal();
     showToast(`${jobs.length} ${plural(jobs.length, "job marcado como pago", "jobs marcados como pagos")}!`);
@@ -880,20 +1005,10 @@ on("confirmBulkDelete", "click", async () => {
     const uid = currentUser.uid;
     await commitInChunks(jobs, (batch, j) => {
       // Log ANTES/junto da exclusão, no mesmo lote, para preservar os dados do job
-      batch.set(doc(collection(db, "users", uid, "deleteLogs")), {
-        entityType: "job",
-        jobId: j.id,
-        jobName: j.name || "",
-        jobClient: j.client || "",
-        jobValue: j.value || 0,
-        jobDates: jobDatesArray(j),
-        reason,
-        bulk: true,
-        bulkCount: jobs.length,
-        userEmail: currentUser.email || "",
-        userName: currentUserName || "",
-        deletedAt: new Date()
-      });
+      batch.set(activityRef(uid), activityPayload({
+        action: "delete", entityType: "job", entityId: j.id, entityName: j.name, entityClient: j.client,
+        value: Number(j.value) || 0, snapshot: jobSnapshot(j), reason, bulk: true
+      }));
       batch.delete(doc(db, "users", uid, "jobs", j.id));
     }, 2);
     selectedJobIds.clear();
@@ -947,6 +1062,12 @@ on("backupBtn", "click", async () => {
       logsExclusao = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) { console.warn(e); avisos.push("Não foi possível ler os logs de exclusão."); }
 
+    let historico = [];
+    try {
+      const snap = await getDocs(query(collection(db, "users", uid, "activityLogs"), orderBy("at", "desc")));
+      historico = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.warn(e); avisos.push("Não foi possível ler o histórico de alterações."); }
+
     const backup = {
       meta: {
         app: "Controle de Job",
@@ -958,14 +1079,16 @@ on("backupBtn", "click", async () => {
           clientes: allClients.length,
           notasFiscais: allJobs.reduce((a, j) => a + nfsArray(j).length, 0),
           recibos: allJobs.reduce((a, j) => a + receiptsArray(j).length, 0),
-          logsExclusao: logsExclusao.length
+          logsExclusao: logsExclusao.length,
+          historico: historico.length
         },
         avisos
       },
       perfil,
       jobs: allJobs,
       clientes: allClients,
-      logsExclusao
+      logsExclusao,
+      historico
     };
 
     const json = JSON.stringify(backup, backupReplacer, 2);
@@ -1064,7 +1187,7 @@ on("pendingExportCSV", "click", () => {
   const meta = exportMeta("Pendências de Recebimento", label);
   const totalPendente = jobs.reduce((a, j) => a + pendingAmountOf(j), 0);
   const summaryRow = [`Resumo: ${jobs.length} ${plural(jobs.length, "job", "jobs")} · total pendente ${fmt(totalPendente)}`];
-  const headerRow = ["Data(s)", "Horário", "Job", "Cliente", "Status", "Valor Total", "Pago", "Pendente"];
+  const headerRow = ["Data(s)", "Horário", TERM.Job, "Cliente", "Status", "Valor Total", "Pago", "Pendente"];
   const dataRows = jobs.map(j => [
     jobDatesArray(j).join("; "), jobTimesPlain(j), j.name, clientDisplayName(j.client), statusLabel(j.status),
     Number(j.value || 0), paidAmountOf(j), pendingAmountOf(j)
@@ -1087,8 +1210,8 @@ on("pendingExportPDF", "click", () => {
   const withTimes = jobs.some(hasJobTimes);
 
   const head = withTimes
-    ? ["Data", "Horário", "Job", "Cliente", "Status", "Total", "Pendente"]
-    : ["Data", "Job", "Cliente", "Status", "Total", "Pendente"];
+    ? ["Data", "Horário", TERM.Job, "Cliente", "Status", "Total", "Pendente"]
+    : ["Data", TERM.Job, "Cliente", "Status", "Total", "Pendente"];
   const body = jobs.map(j => {
     const row = [fmtJobDatesPlain(j), j.name, clientDisplayName(j.client), statusLabelPlain(j.status), fmt(j.value), fmt(pendingAmountOf(j))];
     if (withTimes) row.splice(1, 0, jobTimesPlain(j) || "-");
@@ -1428,7 +1551,7 @@ on("calExportCSV", "click", () => {
 
   const meta = exportMeta("Disponibilidade da Agenda", label);
   const summaryRow = [`Resumo: ${free} dias livres e ${busy} dias ocupados, de ${total} dias no total`];
-  const headerRow = ["Data", "Dia da Semana", "Status", "Horário", "Horas", "Job", "Cliente"];
+  const headerRow = ["Data", "Dia da Semana", "Status", "Horário", "Horas", TERM.Job, "Cliente"];
   const dataRows = rows.map(r => [fmtDate(r.date), r.dow, r.status, r.time, r.hours, r.job, r.client]);
 
   const all = [...metaRowsAOA(meta), summaryRow, [], headerRow, ...dataRows];
@@ -1450,7 +1573,7 @@ on("calExportPDF", "click", () => {
 
   doc.autoTable({
     startY: startY + 6,
-    head: [["Data", "Dia", "Status", "Horário", "Horas", "Job", "Cliente"]],
+    head: [["Data", "Dia", "Status", "Horário", "Horas", TERM.Job, "Cliente"]],
     body: rows.map(r => [fmtDate(r.date), r.dow, r.status, r.time || "-", r.hours || "-", r.job || "-", r.client || "-"]),
     styles: { fontSize: 8 },
     headStyles: { fillColor: [124,106,247] },
@@ -1505,6 +1628,13 @@ function renderDashboard() {
   $("cardAnoNF").textContent = fmt(anoNF);
   $("cardJobs").textContent = periodJobs.length;
   $("cardTicket").textContent = fmt(ticket);
+
+  const ganhoCard = $("cardGanhoWrap");
+  if (ganhoCard) {
+    ganhoCard.classList.toggle("hidden", !isEarningsEnabled());
+    $("cardGanhoLabel").textContent = `Meu ganho ${periodLabel}`;
+    $("cardGanho").textContent = fmt(periodJobs.reduce((a, j) => a + earningOf(j), 0));
+  }
 
   // Table
   const tbody = $("dashJobsBody");
@@ -1752,6 +1882,9 @@ function openJobModal(jobId = null) {
   setPricingMode(jobPricingMode);
   setPaymentType(jobPaymentType);
   togglePayDateField();
+  applyEarningFieldVisibility();
+  const je = jobId ? allJobs.find(x => x.id === jobId)?.earning : getDefaultEarning();
+  setEarningMode(je?.mode, je?.amount);
   $("jobModal").classList.remove("hidden");
   checkJobDraft();
 }
@@ -1788,6 +1921,8 @@ function duplicateJob(jobId) {
   setPricingMode(jobPricingMode); // recalcula valor (diária/hora) e renderiza as datas
   setPaymentType(jobPaymentType);
   togglePayDateField();
+  applyEarningFieldVisibility();
+  setEarningMode(j.earning?.mode, j.earning?.amount);
   $("jobModal").classList.remove("hidden");
 
   showToast("Job duplicado — ajuste a(s) data(s) e salve.");
@@ -1827,10 +1962,10 @@ $("pricingModeToggle").querySelectorAll(".mode-btn").forEach(btn => {
 });
 
 on("jobRate", "input", recalcJobValue);
-on("jobValue", "input", updatePendingHint);
+on("jobValue", "input", () => { updatePendingHint(); updateEarningHint(); });
 
 function recalcJobValue() {
-  if (jobPricingMode === "fixo") { updatePendingHint(); return; }
+  if (jobPricingMode === "fixo") { updatePendingHint(); updateEarningHint(); return; }
 
   const rate = parseFloat($("jobRate").value) || 0;
   let total = 0;
@@ -1845,7 +1980,48 @@ function recalcJobValue() {
   $("calcTotalBox").textContent = fmt(total);
   $("jobValue").value = total ? total.toFixed(2) : "";
   updatePendingHint();
+  updateEarningHint();
 }
+
+// ─────────────────────────────────────────────
+// QUANTO EU GANHO (total / fixo / percentual)
+// ─────────────────────────────────────────────
+let jobEarningMode = "total"; // "total" | "fixo" | "percentual"
+
+function updateEarningHint() {
+  const el = $("earningHint");
+  if (!el) return;
+  const value = parseFloat($("jobValue").value) || 0;
+  const amount = parseFloat($("jobEarningAmount").value) || 0;
+  if (jobEarningMode === "total") {
+    el.textContent = value ? `Seu ganho: ${fmt(value)} (valor total)` : "";
+    return;
+  }
+  const g = earningFor(value, { mode: jobEarningMode, amount });
+  el.textContent = jobEarningMode === "percentual"
+    ? `Seu ganho: ${fmt(g)} (${amount}% de ${fmt(value)})`
+    : `Seu ganho: ${fmt(g)} (valor fixo)`;
+}
+
+function setEarningMode(mode, amount) {
+  jobEarningMode = ["fixo", "percentual"].includes(mode) ? mode : "total";
+  $("earningModeToggle").querySelectorAll(".mode-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.emode === jobEarningMode);
+  });
+  $("earningInputRow").classList.toggle("hidden", jobEarningMode === "total");
+  $("earningUnit").textContent = jobEarningMode === "percentual" ? "%" : "R$";
+  if (amount !== undefined) $("jobEarningAmount").value = amount || "";
+  updateEarningHint();
+}
+
+function applyEarningFieldVisibility() {
+  $("earningField").classList.toggle("hidden", !isEarningsEnabled());
+}
+
+$("earningModeToggle")?.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => setEarningMode(btn.dataset.emode));
+});
+on("jobEarningAmount", "input", updateEarningHint);
 
 // ─────────────────────────────────────────────
 // MULTI-DATA (diárias) NO MODAL DE JOB
@@ -2066,7 +2242,9 @@ function captureJobDraftData() {
     notes: $("jobNotes").value,
     status: $("jobStatus").value,
     payDate: $("jobPayDate").value,
-    paidAmount: $("jobPaidAmount").value
+    paidAmount: $("jobPaidAmount").value,
+    earningMode: jobEarningMode,
+    earningAmount: $("jobEarningAmount").value
   };
 }
 
@@ -2128,6 +2306,8 @@ function restoreJobDraft(draft) {
 
   setPricingMode(jobPricingMode);
   setPaymentType(jobPaymentType);
+  applyEarningFieldVisibility();
+  setEarningMode(draft.earningMode, draft.earningAmount);
   togglePayDateField();
 }
 
@@ -2240,6 +2420,19 @@ on("saveJobBtn", "click", async () => {
     if (validationError) return showToast(validationError, "error");
   }
 
+  // Quanto o usuário ganha neste job (só quando o controle de ganho está ligado)
+  let earning = existingJob?.earning || null;
+  if (isEarningsEnabled()) {
+    if (jobEarningMode === "total") {
+      earning = null;
+    } else {
+      const ea = parseFloat($("jobEarningAmount").value) || 0;
+      if (ea <= 0) return showToast("Informe quanto você ganha (valor fixo ou percentual).", "error");
+      if (jobEarningMode === "percentual" && ea > 100) return showToast("O percentual não pode passar de 100%.", "error");
+      earning = { mode: jobEarningMode, amount: ea };
+    }
+  }
+
   if (!currentUser) return showToast("Sessão expirada. Faça login novamente.", "error");
 
   loading(true);
@@ -2257,15 +2450,19 @@ on("saveJobBtn", "click", async () => {
       }, {}),
       paymentType,
       paidAmount,
+      earning,
       updatedAt: new Date()
     };
     if (editingJobId) {
       await fireWrite(updateDoc(doc(db, "users", currentUser.uid, "jobs", editingJobId), data));
+      await logJobUpdated(editingJobId, existingJob || {}, { ...(existingJob || {}), ...data });
       clearJobDraft();
       showToast("Job atualizado!");
     } else {
       data.createdAt = new Date();
-      await fireWrite(addDoc(collection(db, "users", currentUser.uid, "jobs"), data));
+      const newRef = doc(collection(db, "users", currentUser.uid, "jobs"));
+      await fireWrite(setDoc(newRef, data));
+      await logJobCreated(newRef.id, data);
       clearJobDraft();
       showToast("Job adicionado!");
     }
@@ -2327,21 +2524,15 @@ on("confirmDelete", "click", async () => {
 
   loading(true);
   try {
-    // Registra o log ANTES de excluir, para preservar os dados do job excluído
-    await fireWrite(addDoc(collection(db, "users", currentUser.uid, "deleteLogs"), {
-      entityType: "job",
-      jobId: deletingJobId,
-      jobName: job?.name || "",
-      jobClient: job?.client || "",
-      jobValue: job?.value || 0,
-      jobDates: job ? jobDatesArray(job) : [],
-      reason,
-      userEmail: currentUser.email || "",
-      userName: currentUserName || "",
-      deletedAt: new Date()
+    // Log e exclusão no mesmo lote: ou grava os dois, ou nenhum
+    const uid = currentUser.uid;
+    const batch = writeBatch(db);
+    batch.set(activityRef(uid), activityPayload({
+      action: "delete", entityType: "job", entityId: deletingJobId, entityName: job?.name,
+      entityClient: job?.client, value: Number(job?.value) || 0, snapshot: job ? jobSnapshot(job) : null, reason
     }));
-
-    await fireWrite(deleteDoc(doc(db, "users", currentUser.uid, "jobs", deletingJobId)));
+    batch.delete(doc(db, "users", uid, "jobs", deletingJobId));
+    await fireWrite(batch.commit());
     showToast("Job excluído e registrado no log.");
     closeDeleteModalFn();
   } catch (e) {
@@ -2351,40 +2542,10 @@ on("confirmDelete", "click", async () => {
 });
 
 // ─────────────────────────────────────────────
-// LOGS DE EXCLUSÃO
+// HISTÓRICO (inclusões, alterações e exclusões) — veja logger.js
 // ─────────────────────────────────────────────
 async function renderLogsPage() {
-  const tbody = $("logsBody");
-  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text2)">Carregando...</td></tr>`;
-  $("logsEmpty").classList.add("hidden");
-
-  try {
-    const q = query(collection(db, "users", currentUser.uid, "deleteLogs"), orderBy("deletedAt", "desc"));
-    const snap = await getDocs(q);
-    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    tbody.innerHTML = "";
-    $("logsEmpty").classList.toggle("hidden", logs.length > 0);
-
-    logs.forEach(log => {
-      const dt = log.deletedAt?.toDate?.() || new Date(log.deletedAt || Date.now());
-      const dataHora = `${dt.toLocaleDateString("pt-BR")} ${dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td style="white-space:nowrap;color:var(--text2);font-size:12px">${dataHora}</td>
-        <td>${log.userName || log.userEmail || "-"}</td>
-        <td>
-          <div class="job-name">${log.jobName || "(sem nome)"}</div>
-          <div class="job-client">${clientDisplayName(log.jobClient) || ""}</div>
-        </td>
-        <td class="job-value">${fmt(log.jobValue || 0)}</td>
-        <td style="font-size:13px">${log.reason || "-"}</td>`;
-      tbody.appendChild(tr);
-    });
-  } catch (e) {
-    console.error(e);
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text2)">Erro ao carregar logs.</td></tr>`;
-  }
+  await renderLogs(currentUser.uid);
 }
 
 // ─────────────────────────────────────────────
@@ -2695,6 +2856,7 @@ on("saveNFBtn", "click", async () => {
       payDate: payDateFinal,
       updatedAt: new Date()
     }));
+    await logJobUpdated(nfTargetJobId, j, { ...j, nfs: finalNFs, nf: null, status: newStatus, paymentType, paidAmount, payDate: payDateFinal });
 
     // Atualiza a cópia local imediatamente (evita reabrir o modal com dados desatualizados
     // antes do listener do Firestore sincronizar de volta)
@@ -3013,6 +3175,7 @@ on("saveReceiptBtn", "click", async () => {
       payDate: payDateFinal,
       updatedAt: new Date()
     }));
+    await logJobUpdated(receiptTargetJobId, j, { ...j, receipts: finalReceipts, receipt: null, status: newStatus, paymentType, paidAmount, payDate: payDateFinal });
 
     const idx = allJobs.findIndex(x => x.id === receiptTargetJobId);
     if (idx !== -1) {
@@ -3292,7 +3455,7 @@ function renderTopClientes() {
 on("repExportExcel", "click", () => {
   const jobs = getReportJobs();
   const meta = exportMeta("Relatório Financeiro", reportPeriodLabel() || "Todos os períodos");
-  const headerRow = ["Data","Horário","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
+  const headerRow = ["Data","Horário",TERM.Job,"Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
   const dataRows = jobs.map(j => [
     fmtJobDatesPlain(j), jobTimesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => fmtDate(n.date)).join("; "),
@@ -3402,7 +3565,7 @@ function updateMEIAlert() {
 on("exportCSV", "click", () => {
   const jobs = getFilteredJobs();
   const meta = exportMeta("Lista de Jobs", jobsFilterLabel());
-  const header = ["Data(s)","Horário","Job","Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
+  const header = ["Data(s)","Horário",TERM.Job,"Cliente","Valor","Pago","Pendente","Status","NF Número","NF Data","Recibo","Observações"];
   const rows = jobs.map(j => [
     jobDatesArray(j).join("; "), jobTimesPlain(j), j.name, j.client, j.value, paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => n.date).join("; "), receiptsArray(j).map(r => r.number).filter(Boolean).join("; "), j.notes || ""
@@ -3415,7 +3578,7 @@ on("exportCSV", "click", () => {
 on("exportExcel", "click", () => {
   const jobs = getFilteredJobs();
   const meta = exportMeta("Lista de Jobs", jobsFilterLabel());
-  const headerRow = ["Data","Horário","Job","Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
+  const headerRow = ["Data","Horário",TERM.Job,"Cliente","Valor","Pago","Pendente","Status","NF Nº","NF Data","Recibo","Observações"];
   const dataRows = jobs.map(j => [
     fmtJobDatesPlain(j), jobTimesPlain(j), j.name, j.client, Number(j.value), paidAmountOf(j), pendingAmountOf(j), statusLabel(j.status),
     nfsArray(j).map(n => n.number).join("; "), nfsArray(j).map(n => fmtDate(n.date)).join("; "),
@@ -3424,7 +3587,7 @@ on("exportExcel", "click", () => {
   ]);
   const ws = XLSX.utils.aoa_to_sheet([...metaRowsAOA(meta), headerRow, ...dataRows]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Jobs");
+  XLSX.utils.book_append_sheet(wb, ws, TERM.Jobs);
   XLSX.writeFile(wb, "controle-jobs.xlsx");
 });
 
@@ -3517,8 +3680,8 @@ function pdfJobsTable(doc, jobs, startY) {
   const withTimes = jobs.some(hasJobTimes);
 
   const head = withTimes
-    ? ["Data", "Horário", "Job", "Cliente", "Valor", "Pago", "Pendente", "Status"]
-    : ["Data", "Job", "Cliente", "Valor", "Pago", "Pendente", "Status"];
+    ? ["Data", "Horário", TERM.Job, "Cliente", "Valor", "Pago", "Pendente", "Status"]
+    : ["Data", TERM.Job, "Cliente", "Valor", "Pago", "Pendente", "Status"];
   const body = jobs.map(j => {
     const row = [fmtJobDatesPlain(j), j.name, j.client, fmt(j.value), fmt(paidAmountOf(j)), fmt(pendingAmountOf(j)), statusLabelPlain(j.status)];
     if (withTimes) row.splice(1, 0, jobTimesPlain(j) || "-");

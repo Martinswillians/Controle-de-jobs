@@ -8,6 +8,8 @@ import {
   onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+import { logActivity, diffClient } from "./logger.js";
+
 export let allClients = [];
 let unsubClients = null;
 let editingClientId = null;
@@ -234,11 +236,21 @@ export async function saveClient(uid, showToast, loading) {
   loading(true);
   try {
     if (editingClientId) {
+      const before = allClients.find(c => c.id === editingClientId) || {};
       await fireWrite(updateDoc(doc(db, "users", uid, "clients", editingClientId), data));
+      const changes = diffClient(before, { ...before, ...data });
+      if (changes.length) {
+        await logActivity({ action: "update", entityType: "client", entityId: editingClientId, entityName: data.name, changes }, uid);
+      }
       showToast("Cliente atualizado!");
     } else {
       data.createdAt = new Date();
-      await fireWrite(addDoc(collection(db, "users", uid, "clients"), data));
+      const newRef = doc(collection(db, "users", uid, "clients"));
+      await fireWrite(setDoc(newRef, data));
+      await logActivity({
+        action: "create", entityType: "client", entityId: newRef.id, entityName: data.name,
+        snapshot: { name: data.name, tradeName: data.tradeName, cnpj: data.cnpj }
+      }, uid);
       showToast("Cliente cadastrado!");
     }
     closeClientModal();
@@ -253,7 +265,12 @@ async function toggleClientStatus(clientId, currentStatus) {
   if (!uid) return;
   const newStatus = currentStatus === "inativo" ? "ativo" : "inativo";
   try {
+    const c = allClients.find(x => x.id === clientId);
     await fireWrite(updateDoc(doc(db, "users", uid, "clients", clientId), { status: newStatus }));
+    await logActivity({
+      action: "update", entityType: "client", entityId: clientId, entityName: c?.name || "",
+      changes: diffClient({ status: currentStatus || "ativo" }, { status: newStatus })
+    }, uid);
   } catch(e) { console.error(e); }
 }
 
@@ -262,7 +279,12 @@ async function confirmDeleteClient(clientId) {
   const uid = window._currentUid;
   if (!uid) return;
   try {
+    const c = allClients.find(x => x.id === clientId);
     await fireWrite(deleteDoc(doc(db, "users", uid, "clients", clientId)));
+    await logActivity({
+      action: "delete", entityType: "client", entityId: clientId, entityName: c?.name || "",
+      snapshot: c ? { name: c.name, tradeName: c.tradeName || "", cnpj: c.cnpj || "" } : null
+    }, uid);
   } catch(e) { console.error(e); }
 }
 
@@ -440,6 +462,12 @@ async function doImport(mode, uid, showToast, loading) {
   loading(true);
   try {
     if (mode === "replace") {
+      if (allClients.length) {
+        await logActivity({
+          action: "delete", entityType: "client", entityName: `${allClients.length} cliente(s)`,
+          summary: "Lista anterior apagada para importar uma nova (substituir)", bulk: true
+        }, uid);
+      }
       // Apaga todos os clientes existentes primeiro
       const delPromises = allClients.map(c =>
         deleteDoc(doc(db, "users", uid, "clients", c.id))
@@ -484,6 +512,13 @@ async function doImport(mode, uid, showToast, loading) {
       added++;
     }
 
+    if (added > 0) {
+      await logActivity({
+        action: "create", entityType: "client", entityName: `${added} cliente(s) importado(s)`,
+        summary: mode === "replace" ? "Importação (substituindo a lista)" : `Importação (mesclar)${skipped ? ` — ${skipped} ignorado(s) por já existirem` : ""}`,
+        bulk: true
+      }, uid);
+    }
     closeImportModal();
     const msg = mode === "replace"
       ? `${added} clientes importados com sucesso!`

@@ -12,7 +12,7 @@ import {
 //   firebase.auth().currentUser.uid  ou veja no Firebase Console > Authentication
 export const ADMIN_UID = "w9XSwxwewTaXwk0hCpyOuvCcd7G3";
 
-const DEMO_DAYS = 5;
+export const DEMO_DAYS = 5;
 
 // ─────────────────────────────────────────────
 // CHECK ACCESS
@@ -159,7 +159,7 @@ function renderAdminPage(users, filter = "all") {
   const enriched = users.map(u => {
     const createdAt = u.createdAt?.toDate?.() || new Date(u.createdAt || 0);
     const diffDays = (new Date() - createdAt) / (1000*60*60*24);
-    const demoLeft = Math.ceil(3 - diffDays);
+    const demoLeft = Math.ceil(DEMO_DAYS - diffDays); // antes estava fixo em 3 dias, divergindo do checkAccess (5)
     let statusKey = "demo";
     if (u.accessStatus === "approved") statusKey = "approved";
     else if (u.accessStatus === "blocked") statusKey = "blocked";

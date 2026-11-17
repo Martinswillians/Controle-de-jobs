@@ -83,11 +83,16 @@ const CLIENT_FIELDS = [
 ];
 
 const BRANCH_TXT = { audiovisual: "Audiovisual / Gravações", servicos: "Prestação de Serviços" };
+const COMPANY_TXT = { mei: "MEI", me: "ME", epp: "EPP", sa: "S.A.", autonomo: "Autônomo" };
 const PROFILE_FIELDS = [
   { key: "name", label: "Nome", get: p => p.name || "" },
   { key: "profession", label: "Profissão", get: p => p.profession || "" },
   { key: "cnpj", label: "CNPJ MEI", get: p => p.cnpj || "" },
   { key: "workBranch", label: "Ramo de trabalho", get: p => p.workBranch || "audiovisual", fmt: v => BRANCH_TXT[v] || v },
+  { key: "companyType", label: "Tipo de empresa", get: p => p.companyType || "mei", fmt: v => COMPANY_TXT[v] || v },
+  { key: "customLimits", label: "Limite personalizado",
+    get: p => Object.entries(p.customLimits || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => `${COMPANY_TXT[k] || k}: ${money(v)}`).join(" · "),
+    fmt: v => v || "padrão" },
   { key: "trackEarnings", label: "Controlar meu ganho", get: p => (p.trackEarnings ? "sim" : "não") },
   { key: "defaultEarning", label: "Ganho padrão", get: p => (p.defaultEarning && p.defaultEarning.mode ? `${p.defaultEarning.mode}:${Number(p.defaultEarning.amount) || 0}` : ""),
     fmt: v => { if (!v) return "Valor total"; const [m, a] = v.split(":"); return earningTxt({ mode: m, amount: Number(a) }); } }

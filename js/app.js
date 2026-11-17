@@ -31,7 +31,8 @@ import {
 import {
   OTHER_VALUE, TERM, loadCustomProfessions, buildProfessionSelect, bindProfessionOther,
   resolveProfession, addProfessionToDomain, branchForProfession,
-  setWorkProfile, isEarningsEnabled, getDefaultEarning, earningFor, earningOf, hasEarningRule
+  setWorkProfile, isEarningsEnabled, getDefaultEarning, earningFor, earningOf, hasEarningRule,
+  COMPANY_TYPES, setCompanyProfile, companyInfo, defaultLimitFor, customLimitFor, getLimit, limitScheduleText, limitName, limitTip
 } from "./domain.js";
 
 import {
@@ -62,7 +63,10 @@ let nfTargetJobId = null;
 let charts = {};
 let unsubscribeJobs = null;
 
-const MEI_LIMIT = 81000;
+const todayYear = () => new Date().getFullYear(); // ano de hoje (currentYear acima é o ano navegado no dashboard)
+const lcFirst = t => t.charAt(0).toLowerCase() + t.slice(1); // "Limite MEI" -> "limite MEI"
+// Ano de referência dos relatórios (período "YYYY" ou "YYYY-MM"); sem período = ano atual
+const reportYear = () => (/^\d{4}/.test(repPeriod) ? parseInt(repPeriod.slice(0, 4), 10) : todayYear());
 const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                    "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -534,7 +538,7 @@ on("registerBtn", "click", async () => {
   loading(true);
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    await setDoc(doc(db, "users", cred.user.uid), { name, email, profession: prof, cnpj: "", workBranch: branchForProfession(prof), createdAt: new Date() });
+    await setDoc(doc(db, "users", cred.user.uid), { name, email, profession: prof, cnpj: "", workBranch: branchForProfession(prof), companyType: $("regCompanyType").value || "mei", createdAt: new Date() });
     if (profRes.custom) addProfessionToDomain(prof, cred.user.uid); // entra na lista de profissões
     showMsg("Conta criada! Entrando...", "success");
   } catch (e) {
@@ -676,6 +680,48 @@ document.querySelectorAll("#settingEarningModeToggle .mode-btn").forEach(btn => 
 });
 on("settingTrackEarnings", "change", syncBranchSettingsUI);
 
+let settingsCustomLimits = {};
+let settingsCompanyShown = "mei";
+
+function syncCompanySettingsUI() {
+  const type = $("settingCompanyType").value || "mei";
+  const info = COMPANY_TYPES[type];
+  const def = defaultLimitFor(type, todayYear());
+  $("settingCNPJLabel").textContent = info.cnpjLabel;
+  $("settingLimitLabel").textContent = info.hasDefaultLimit
+    ? "Limite anual de faturamento (R$)"
+    : "Meta anual de faturamento (R$) — opcional";
+  $("settingCustomLimit").placeholder = def ? `Padrão: ${def}` : "Sem teto";
+  $("settingCustomLimit").value = settingsCustomLimits[type] || "";
+  $("settingLimitHint").textContent = limitScheduleText(type) +
+    (info.hasDefaultLimit ? " Se a lei mudar, informe o novo valor aqui; deixe em branco para usar o padrão." : "");
+  settingsCompanyShown = type;
+}
+
+on("settingCompanyType", "change", () => {
+  // guarda o que foi digitado para o tipo anterior antes de trocar
+  const v = parseFloat($("settingCustomLimit").value);
+  settingsCustomLimits[settingsCompanyShown] = v > 0 ? v : null;
+  syncCompanySettingsUI();
+});
+on("settingLimitReset", "click", () => {
+  settingsCustomLimits[settingsCompanyShown] = null;
+  $("settingCustomLimit").value = "";
+});
+
+// Rótulos que dependem do tipo de empresa (menu, título da página, relatórios)
+function applyCompanyLabels() {
+  const info = companyInfo();
+  const name = limitName();
+  const limited = getLimit(todayYear()) != null;
+  const set = (id, txt) => { const el = $(id); if (el) el.textContent = txt; };
+  set("navMeiLink", limited ? `⚠️ ${name}` : "📈 Faturamento");
+  set("meiPageTitle", limited ? name : "Faturamento");
+  set("settingCNPJLabel", info.cnpjLabel);
+  set("repNFTitle", limited ? `🧾 Notas Fiscais Emitidas × ${name}` : "🧾 Notas Fiscais Emitidas");
+  set("repNFPctLabel", limited ? `% do ${lcFirst(name)} já coberto por NF` : "% do limite coberto por NF");
+}
+
 async function loadUserProfile() {
   try {
     await loadCustomProfessions();
@@ -701,6 +747,13 @@ async function loadUserProfile() {
       $("settingTrackEarnings").checked = isEarningsEnabled();
       $("settingEarningAmount").value = d.defaultEarning?.amount || "";
       syncBranchSettingsUI();
+
+      setCompanyProfile({ companyType: d.companyType, customLimits: d.customLimits });
+      settingsCustomLimits = { ...(d.customLimits || {}) };
+      $("settingCompanyType").value = COMPANY_TYPES[d.companyType] ? d.companyType : "mei";
+      syncCompanySettingsUI();
+      applyCompanyLabels();
+      updateMEIAlert();
     } else {
       setLogUser({ uid: currentUser.uid, email: currentUser.email, name: "" });
     }
@@ -723,7 +776,15 @@ on("saveSettings", "click", async () => {
     defaultEarning = { mode: settingsEarnMode, amount };
   }
 
-  const data = { name, profession, cnpj, workBranch: settingsBranch, trackEarnings, defaultEarning };
+  const companyType = $("settingCompanyType").value || "mei";
+  const typedLimit = parseFloat($("settingCustomLimit").value);
+  if ($("settingCustomLimit").value.trim() !== "" && !(typedLimit > 0)) {
+    return showToast("O limite/meta precisa ser um valor maior que zero (ou deixe em branco para usar o padrão).", "error");
+  }
+  settingsCustomLimits[companyType] = typedLimit > 0 ? typedLimit : null;
+  const customLimits = { ...settingsCustomLimits };
+
+  const data = { name, profession, cnpj, workBranch: settingsBranch, companyType, customLimits, trackEarnings, defaultEarning };
   const branchChanged = (currentProfile.workBranch || "audiovisual") !== settingsBranch;
 
   try {
@@ -753,6 +814,9 @@ on("saveSettings", "click", async () => {
       return;
     }
     setWorkProfile({ branch: settingsBranch, trackEarnings, defaultEarning });
+    setCompanyProfile({ companyType, customLimits });
+    applyCompanyLabels();
+    syncCompanySettingsUI();
     refreshAllViews();
     showToast("Configurações salvas!");
   } catch (e) { console.error(e); showToast("Erro ao salvar.", "error"); }
@@ -3330,17 +3394,20 @@ function renderNFvsMEI() {
 
   // Limite de referência: mensal (81.000/12) ou anual, dependendo do período selecionado
   const isMes = repPeriod && repPeriod.length === 7; // "YYYY-MM" = mês específico
-  const limiteRef = isMes ? MEI_LIMIT / 12 : MEI_LIMIT;
-  const limiteLabel = isMes
-    ? `Limite mensal: ${fmt(limiteRef)} (1/12 do MEI)`
-    : `Limite MEI: R$ 81.000`;
+  const limiteAnual = getLimit(reportYear());
+  const hasLim = limiteAnual != null;
+  const limiteRef = hasLim ? (isMes ? limiteAnual / 12 : limiteAnual) : null;
+  const tag = companyInfo().short;
+  const limiteLabel = !hasLim ? "Sem teto de faturamento definido"
+    : isMes ? `Limite mensal: ${fmt(limiteRef)} (1/12 do limite ${tag})`
+    : `${limitName()}: ${fmt(limiteRef)}`;
 
-  const pctNF = Math.min((totalNF / limiteRef) * 100, 100);
+  const pctNF = hasLim ? Math.min((totalNF / limiteRef) * 100, 100) : 0;
 
   $("repFaturamentoTotal").textContent = fmt(totalGeral);
   $("repNFTotal").textContent = fmt(totalNF);
   $("repNFCount").textContent = countNF;
-  $("repNFPercent").textContent = pctNF.toFixed(1) + "%" + (isMes ? " (do limite mensal)" : " (do limite anual)");
+  $("repNFPercent").textContent = hasLim ? pctNF.toFixed(1) + "%" + (isMes ? " (do limite mensal)" : " (do limite anual)") : "—";
   $("repNFProgress").style.width = pctNF + "%";
 
   // Atualiza label do limite na barra de progresso
@@ -3486,24 +3553,32 @@ on("repExportPDF", "click", () => {
 // MEI
 // ─────────────────────────────────────────────
 function renderMEI() {
-  const year = new Date().getFullYear();
+  const year = todayYear();
+  const limit = getLimit(year);
+  const hasLim = limit != null;
   const yearJobs = allJobs.filter(j => j.date?.startsWith(String(year)));
   const faturado = yearJobs.reduce((a,j) => a + Number(j.value||0), 0);
 
-  // Faturamento com Nota Fiscal emitida (paga ou ainda pendente) — é esse valor que conta para o limite MEI
+  // Faturamento com Nota Fiscal emitida (paga ou ainda pendente) — é o valor usado no acompanhamento do limite
   const jobsComNF = yearJobs.filter(j => hasNFStatus(j.status));
   const faturadoNF = jobsComNF.reduce((a,j) => a + Number(j.value||0), 0);
 
-  const disponivel = MEI_LIMIT - faturadoNF;
-  const pct = Math.min(faturadoNF / MEI_LIMIT * 100, 100);
+  const rawPct = hasLim ? faturadoNF / limit * 100 : 0;
+  const pct = Math.min(rawPct, 100);
 
   $("meiFaturado").textContent = fmt(faturado);
   $("meiFaturadoNF").textContent = fmt(faturadoNF);
-  $("meiDisponivel").textContent = fmt(disponivel);
-  $("meiPercent").textContent = pct.toFixed(1) + "%";
+  $("meiLimitLabel").textContent = hasLim ? `${limitName()} ${year}` : "Limite de faturamento";
+  $("meiLimitValue").textContent = hasLim ? fmt(limit) : "Sem teto";
+  $("meiDisponivel").textContent = !hasLim ? "—" : (limit - faturadoNF >= 0 ? fmt(limit - faturadoNF) : `Excedido em ${fmt(faturadoNF - limit)}`);
+  $("meiPercent").textContent = hasLim ? rawPct.toFixed(1) + "%" : "—";
   $("meiProgress").style.width = pct + "%";
+  $("meiProgressWrap").classList.toggle("hidden", !hasLim);
+  $("meiProgressMax").textContent = hasLim ? fmt(limit) : "";
+  $("meiLimitNote").textContent = limitScheduleText() +
+    (customLimitFor() != null ? ` Você definiu um valor personalizado: ${fmt(limit)}.` : "");
 
-  // Stats (baseados no faturamento com NF, que é o que conta para o limite)
+  // Stats (baseados no faturamento com NF)
   const monthNow = new Date().getMonth() + 1;
   const media = monthNow > 0 ? faturadoNF / monthNow : 0;
   const projecao = media * 12;
@@ -3516,43 +3591,50 @@ function renderMEI() {
   // Alert box
   const alertBox = $("meiAlertBox");
   alertBox.className = "mei-alert-box";
-  if (pct >= 95) {
+  const name = limitName();
+  if (!hasLim) {
+    alertBox.classList.add("hidden");
+  } else if (rawPct >= 95) {
     alertBox.classList.remove("hidden");
     alertBox.classList.add("warn95");
-    alertBox.textContent = `🚨 ATENÇÃO: Você atingiu ${pct.toFixed(1)}% do limite MEI. Considere abrir uma empresa ou suspender emissão de notas.`;
-  } else if (pct >= 85) {
+    alertBox.textContent = `🚨 ATENÇÃO: Você atingiu ${rawPct.toFixed(1)}% do ${lcFirst(name)}. ${limitTip()}`;
+  } else if (rawPct >= 85) {
     alertBox.classList.remove("hidden");
     alertBox.classList.add("warn85");
-    alertBox.textContent = `⚠️ Alerta: Você está em ${pct.toFixed(1)}% do limite MEI. Fique atento ao faturamento restante.`;
-  } else if (pct >= 70) {
+    alertBox.textContent = `⚠️ Alerta: Você está em ${rawPct.toFixed(1)}% do ${lcFirst(name)}. Fique atento ao faturamento restante.`;
+  } else if (rawPct >= 70) {
     alertBox.classList.remove("hidden");
     alertBox.classList.add("warn70");
-    alertBox.textContent = `💡 Aviso: Você já utilizou ${pct.toFixed(1)}% do limite MEI anual.`;
+    alertBox.textContent = `💡 Aviso: Você já utilizou ${rawPct.toFixed(1)}% do ${lcFirst(name)} anual.`;
   } else {
     alertBox.classList.add("hidden");
   }
 }
 
 function updateMEIAlert() {
-  const year = new Date().getFullYear();
+  const alert = $("meiAlert");
+  const limit = getLimit(todayYear());
+  if (limit == null) { alert.classList.add("hidden"); return; }
+
+  const year = todayYear();
   const yearJobs = allJobs.filter(j => j.date?.startsWith(String(year)));
   const faturadoNF = yearJobs
     .filter(j => hasNFStatus(j.status))
     .reduce((a,j)=>a+Number(j.value||0),0);
-  const pct = faturadoNF / MEI_LIMIT * 100;
-  const alert = $("meiAlert");
+  const pct = faturadoNF / limit * 100;
+  const name = limitName();
 
   if (pct >= 95) {
     alert.className = "mei-alert warn95";
-    alert.textContent = `🚨 Limite MEI: ${pct.toFixed(0)}% utilizado — R$ ${fmt(faturadoNF)} de R$ 81.000 (com NF emitida)`;
+    alert.textContent = `🚨 ${name}: ${pct.toFixed(0)}% utilizado — ${fmt(faturadoNF)} de ${fmt(limit)} (com NF emitida)`;
     alert.classList.remove("hidden");
   } else if (pct >= 85) {
     alert.className = "mei-alert warn85";
-    alert.textContent = `⚠️ Limite MEI: ${pct.toFixed(0)}% utilizado (com NF emitida)`;
+    alert.textContent = `⚠️ ${name}: ${pct.toFixed(0)}% utilizado (com NF emitida)`;
     alert.classList.remove("hidden");
   } else if (pct >= 70) {
     alert.className = "mei-alert warn70";
-    alert.textContent = `💡 Limite MEI: ${pct.toFixed(0)}% utilizado (com NF emitida)`;
+    alert.textContent = `💡 ${name}: ${pct.toFixed(0)}% utilizado (com NF emitida)`;
     alert.classList.remove("hidden");
   } else {
     alert.classList.add("hidden");

@@ -301,6 +301,71 @@ try {
 } catch (e) { /* ignora */ }
 
 // ─────────────────────────────────────────────
+// TIPO DE EMPRESA E LIMITES DE FATURAMENTO
+// ─────────────────────────────────────────────
+// Valores padrão (conferidos em nov/2026). O usuário pode sobrescrever o limite de cada tipo
+// em Configurações caso a lei mude — o valor personalizado vale no lugar do padrão.
+export const COMPANY_TYPES = {
+  mei:      { short: "MEI",      label: "MEI — Microempreendedor Individual", cnpjLabel: "Número CNPJ MEI",            hasDefaultLimit: true },
+  me:       { short: "ME",       label: "ME — Microempresa",                  cnpjLabel: "CNPJ da empresa",            hasDefaultLimit: true },
+  epp:      { short: "EPP",      label: "EPP — Empresa de Pequeno Porte",     cnpjLabel: "CNPJ da empresa",            hasDefaultLimit: true },
+  sa:       { short: "S.A.",     label: "S.A. — Sociedade Anônima",           cnpjLabel: "CNPJ da empresa",            hasDefaultLimit: false },
+  autonomo: { short: "Autônomo", label: "Autônomo (pessoa física)",           cnpjLabel: "CPF ou CNPJ (opcional)",     hasDefaultLimit: false }
+};
+
+// MEI: R$ 81 mil até 2026 · R$ 110 mil em 2027 · R$ 140 mil a partir de 2028 (lei sancionada em 21/10/2026)
+// ME: até R$ 360 mil · EPP: até R$ 4,8 milhões (limites do Simples Nacional, sem alteração)
+// S.A. e autônomo: não há teto de faturamento por tipo de empresa
+export function defaultLimitFor(type, year = new Date().getFullYear()) {
+  if (type === "mei") return year >= 2028 ? 140000 : year === 2027 ? 110000 : 81000;
+  if (type === "me") return 360000;
+  if (type === "epp") return 4800000;
+  return null;
+}
+
+let companyType = "mei";
+let customLimits = {};
+
+export function setCompanyProfile({ companyType: t, customLimits: c } = {}) {
+  companyType = COMPANY_TYPES[t] ? t : "mei"; // quem já usava o app continua como MEI
+  customLimits = c && typeof c === "object" ? { ...c } : {};
+}
+export function getCompanyType() { return companyType; }
+export function companyInfo(type = companyType) { return COMPANY_TYPES[type] || COMPANY_TYPES.mei; }
+
+export function customLimitFor(type = companyType) {
+  const v = Number(customLimits[type]);
+  return v > 0 ? v : null;
+}
+// Limite anual em vigor: o personalizado, se houver; senão o padrão do tipo/ano. null = sem teto.
+export function getLimit(year = new Date().getFullYear(), type = companyType) {
+  return customLimitFor(type) ?? defaultLimitFor(type, year);
+}
+
+const brl = n => (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 });
+
+export function limitScheduleText(type = companyType) {
+  if (type === "mei") return `Padrão: ${brl(81000)} até 2026 · ${brl(110000)} em 2027 · ${brl(140000)} a partir de 2028.`;
+  if (type === "me") return `Padrão: até ${brl(360000)} de receita bruta por ano (Simples Nacional).`;
+  if (type === "epp") return `Padrão: acima de ${brl(360000)} e até ${brl(4800000)} por ano (Simples Nacional).`;
+  return "Não há teto de faturamento para este tipo. Se quiser acompanhar uma meta anual, informe o valor.";
+}
+
+// Nome do limite nas telas: "Limite MEI", "Meta anual" (S.A./autônomo com meta) ou "Faturamento"
+export function limitName(type = companyType) {
+  const info = companyInfo(type);
+  if (info.hasDefaultLimit) return `Limite ${info.short}`;
+  return customLimitFor(type) ? "Meta anual" : "Faturamento";
+}
+
+export function limitTip(type = companyType) {
+  if (type === "mei") return "Ultrapassar o teto exige migrar para ME — fale com seu contador.";
+  if (type === "me") return "Acima do limite de ME a empresa passa a ser EPP — fale com seu contador.";
+  if (type === "epp") return "Acima do limite do Simples Nacional mudam o regime e os impostos — fale com seu contador.";
+  return "Você está chegando perto da meta que definiu.";
+}
+
+// ─────────────────────────────────────────────
 // GANHO POR JOB / SERVIÇO
 // job.earning = null (ganha o valor total) | { mode: "fixo" | "percentual", amount }
 // ─────────────────────────────────────────────

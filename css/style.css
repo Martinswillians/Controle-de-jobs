@@ -2071,3 +2071,11 @@ body.has-demo-banner .main-content { padding-bottom: 60px; }
 .log-to { color: var(--text); }
 .log-note { margin-top: 3px; }
 .log-muted { color: var(--text2); font-size: 12px; }
+
+/* Rótulo de checkbox dentro de ".field" (herdava o estilo de rótulo em maiúsculas) */
+.field label.checkbox-inline {
+  display: flex; align-items: center; gap: 10px;
+  text-transform: none; letter-spacing: 0;
+  font-size: 14px; font-weight: 500; color: var(--text);
+}
+.field label.checkbox-inline input[type="checkbox"] { width: 18px; height: 18px; }
